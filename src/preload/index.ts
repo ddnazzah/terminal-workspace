@@ -20,6 +20,8 @@ import {
   type PullRequestSummary,
   type TerminalDataPayload,
   type TerminalExitPayload,
+  type SessionActivityPayload,
+  type SetFocusedPayload,
   type TerminalId,
   type TerminalRecord,
   type UpdateStatus,
@@ -80,6 +82,14 @@ const api = {
       const listener = (_: unknown, payload: TerminalExitPayload) => cb(payload)
       ipcRenderer.on(IPC.terminals.exit, listener)
       return () => ipcRenderer.off(IPC.terminals.exit, listener)
+    },
+    onActivity: (cb: (payload: SessionActivityPayload) => void): (() => void) => {
+      const listener = (_: unknown, payload: SessionActivityPayload) => cb(payload)
+      ipcRenderer.on(IPC.terminals.activity, listener)
+      return () => ipcRenderer.off(IPC.terminals.activity, listener)
+    },
+    setFocused: (payload: SetFocusedPayload): void => {
+      ipcRenderer.send(IPC.terminals.setFocused, payload)
     },
   },
   dialog: {
