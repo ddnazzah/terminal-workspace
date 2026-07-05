@@ -1,8 +1,19 @@
 import { spawn, type IPty } from 'node-pty'
 import { BrowserWindow } from 'electron'
 import { IPC } from '@shared/types'
-import type { TerminalDataPayload, TerminalExitPayload, TerminalId } from '@shared/types'
+import type {
+  SessionActivityPayload,
+  TerminalDataPayload,
+  TerminalExitPayload,
+  TerminalId,
+} from '@shared/types'
 import { getDefaultShell, prepareShellIntegration } from './shell-integration'
+import { OscParser } from './activity/osc-parser'
+import { ActivityMachine } from './activity/activity-machine'
+import type { SessionActivity } from './activity/types'
+
+/** Notified on every session activity transition (for firing notifications). */
+export type NotifyHook = (id: TerminalId, prev: SessionActivity, next: SessionActivity) => void
 
 const COALESCE_MS = 16
 const MAX_BUFFER_LINES = 10_000
@@ -15,6 +26,9 @@ interface PtyEntry {
   buffer: string[]
   /** Command to inject once, after the shell emits its first output; null once sent. */
   startupCommand: string | null
+  /** Per-session activity detection fed from the raw PTY stream. */
+  parser: OscParser
+  machine: ActivityMachine
 }
 
 /**
@@ -34,6 +48,18 @@ export class PtyManager {
   private window: BrowserWindow | null = null
   private entries = new Map<TerminalId, PtyEntry>()
   private sinks = new Set<PtySink>()
+  private activity = new Map<TerminalId, SessionActivity>()
+  private notifyHook: NotifyHook | null = null
+
+  /** Register the callback that fires notifications on activity transitions. */
+  setNotifyHook(hook: NotifyHook): void {
+    this.notifyHook = hook
+  }
+
+  /** Latest detected activity for a session, if any. */
+  activityFor(id: TerminalId): SessionActivity | undefined {
+    return this.activity.get(id)
+  }
 
   attachWindow(win: BrowserWindow): void {
     this.window = win
@@ -119,6 +145,8 @@ export class PtyManager {
       flushTimer: null,
       buffer: [],
       startupCommand,
+      parser: new OscParser(),
+      machine: new ActivityMachine(),
     }
     this.entries.set(opts.id, entry)
     for (const sink of this.sinks) sink.onCreate?.(opts.id)
@@ -131,6 +159,17 @@ export class PtyManager {
       }
       if (entry.flushTimer === null) {
         entry.flushTimer = setTimeout(() => this.flush(entry), COALESCE_MS)
+      }
+      // Detect session activity from the raw stream. A parser or machine fault
+      // for one session must never break the PTY data path or other sessions.
+      try {
+        for (const ev of entry.parser.push(data)) {
+          const prev = entry.machine.current
+          const next = entry.machine.apply(ev, Date.now())
+          if (next !== prev) this.onActivityChange(entry.id, prev, next)
+        }
+      } catch (err) {
+        console.error('[activity] detection error for', entry.id, err)
       }
       // Inject the configured startup command once the shell is alive (its first
       // output means the prompt/rc has loaded). A short delay lets the prompt
@@ -151,9 +190,22 @@ export class PtyManager {
     pty.onExit(({ exitCode, signal }) => {
       this.flush(entry)
       this.entries.delete(opts.id)
+      this.activity.delete(opts.id)
       const payload: TerminalExitPayload = { id: opts.id, exitCode, signal }
       this.emitExit(payload)
     })
+  }
+
+  private onActivityChange(id: TerminalId, prev: SessionActivity, next: SessionActivity): void {
+    this.activity.set(id, next)
+    const payload: SessionActivityPayload = {
+      id,
+      status: next.status,
+      title: next.title,
+      exitCode: next.lastExitCode,
+    }
+    this.window?.webContents.send(IPC.terminals.activity, payload)
+    this.notifyHook?.(id, prev, next)
   }
 
   has(id: TerminalId): boolean {

@@ -98,6 +98,11 @@ export function getProject(id: ProjectId): Project | undefined {
   return cache.projects.find((p) => p.id === id)
 }
 
+/** Find which project a terminal belongs to (for routing notifications/focus). */
+export function getProjectIdForTerminal(terminalId: string): ProjectId | undefined {
+  return cache.projects.find((p) => p.terminals.some((t) => t.id === terminalId))?.id
+}
+
 export function setState(next: AppState): void {
   cache = next
   scheduleSave()

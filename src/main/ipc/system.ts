@@ -1,13 +1,82 @@
 import { app, BrowserWindow, ipcMain, Notification, shell } from 'electron'
 import { spawn } from 'node:child_process'
-import { IPC, type FocusTerminalPayload, type NotifyPayload, type ProjectId } from '@shared/types'
-import { getProject } from '../store/state'
+import {
+  IPC,
+  type FocusTerminalPayload,
+  type NotifyPayload,
+  type ProjectId,
+  type SetFocusedPayload,
+  type TerminalId,
+} from '@shared/types'
+import { getProject, getProjectIdForTerminal } from '../store/state'
 import { pushToSubscribers } from '../bridge/push'
+import { decideNotification } from '../pty/activity/notification-policy'
+import type { SessionActivity } from '../pty/activity/types'
 
 let mainWindowRef: BrowserWindow | null = null
+// Focus context for suppressing notifications the user is already looking at.
+let focusedSessionId: TerminalId | null = null
+let windowFocused = true
 
 export function setMainWindow(win: BrowserWindow): void {
   mainWindowRef = win
+  windowFocused = win.isFocused()
+  win.on('focus', () => (windowFocused = true))
+  win.on('blur', () => (windowFocused = false))
+}
+
+/** Deliver a notification to the OS and paired phones. */
+function deliverNotification(payload: NotifyPayload): void {
+  // Mirror to paired phones over Web Push. This path only runs when the user
+  // isn't actively viewing the session, so a push means they genuinely need it.
+  void pushToSubscribers(payload)
+
+  if (process.platform === 'darwin' && !app.isPackaged) {
+    notifyViaOsascript(payload.title, payload.body)
+    return
+  }
+  if (!Notification.isSupported()) {
+    console.warn('[notify] Notification.isSupported() returned false')
+    return
+  }
+  const n = new Notification({ title: payload.title, body: payload.body, silent: false })
+  n.on('click', () => {
+    const win = mainWindowRef
+    if (!win) return
+    if (win.isMinimized()) win.restore()
+    win.show()
+    win.focus()
+    const focusPayload: FocusTerminalPayload = {
+      projectId: payload.projectId,
+      terminalId: payload.terminalId,
+    }
+    win.webContents.send(IPC.system.focusTerminal, focusPayload)
+  })
+  n.show()
+}
+
+/**
+ * Decide-and-fire for a session activity transition. Wired as the PtyManager
+ * notify hook. Suppresses when the app is focused and this session is on screen.
+ */
+export function notifyForActivity(
+  id: TerminalId,
+  prev: SessionActivity,
+  next: SessionActivity
+): void {
+  const decision = decideNotification({
+    prev,
+    next,
+    now: Date.now(),
+    focus: { windowFocused, sessionVisible: focusedSessionId === id },
+  })
+  if (!decision) return
+  deliverNotification({
+    title: decision.title,
+    body: decision.body,
+    projectId: getProjectIdForTerminal(id) ?? '',
+    terminalId: id,
+  })
 }
 
 function escapeAppleScript(s: string): string {
@@ -85,38 +154,17 @@ export function registerSystemIpc(): void {
     shell.openExternal(url).catch(() => {})
   })
 
+  // The renderer can still request a notification directly (e.g. the Settings
+  // "send test notification" button). Activity-driven notifications go through
+  // notifyForActivity instead.
   ipcMain.handle(IPC.system.notify, (_e, payload: NotifyPayload): void => {
-    // Mirror every attention notification to paired phones over Web Push. This
-    // handler only fires when the user isn't actively viewing the terminal (the
-    // renderer suppresses the visible+focused case), so a push here means the
-    // user genuinely needs to be told — on whatever device they're near.
-    void pushToSubscribers(payload)
+    deliverNotification(payload)
+  })
 
-    if (process.platform === 'darwin' && !app.isPackaged) {
-      notifyViaOsascript(payload.title, payload.body)
-      return
-    }
-    if (!Notification.isSupported()) {
-      console.warn('[notify] Notification.isSupported() returned false')
-      return
-    }
-    const n = new Notification({
-      title: payload.title,
-      body: payload.body,
-      silent: false,
-    })
-    n.on('click', () => {
-      const win = mainWindowRef
-      if (!win) return
-      if (win.isMinimized()) win.restore()
-      win.show()
-      win.focus()
-      const focusPayload: FocusTerminalPayload = {
-        projectId: payload.projectId,
-        terminalId: payload.terminalId,
-      }
-      win.webContents.send(IPC.system.focusTerminal, focusPayload)
-    })
-    n.show()
+  // The renderer reports which session is on screen so we can suppress
+  // notifications the user is already looking at.
+  ipcMain.on(IPC.terminals.setFocused, (_e, p: SetFocusedPayload): void => {
+    focusedSessionId = p.id
+    windowFocused = p.windowFocused
   })
 }

@@ -87,6 +87,17 @@ export type RunningCommandPayload = {
   agent: { command: string; cwd: string } | null
 }
 
+export type ActivityStatus = 'idle' | 'busy' | 'attention'
+/** Emitted by main when a session's detected activity changes. */
+export type SessionActivityPayload = {
+  id: TerminalId
+  status: ActivityStatus
+  title: string | null
+  exitCode: number | null
+}
+/** Sent by the renderer so main can suppress notifications for the on-screen session. */
+export type SetFocusedPayload = { id: TerminalId | null; windowFocused: boolean }
+
 export const IPC = {
   projects: {
     snapshot: 'projects:snapshot',
@@ -109,6 +120,8 @@ export const IPC = {
     exit: 'terminals:exit',
     setActive: 'terminals:set-active',
     runningCommand: 'terminals:running-command',
+    activity: 'terminals:activity',
+    setFocused: 'terminals:set-focused',
   },
   dialog: {
     pickFolder: 'dialog:pick-folder',
