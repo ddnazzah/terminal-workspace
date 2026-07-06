@@ -26,12 +26,24 @@ body {
   background: var(--bg);
   color: var(--fg);
   overscroll-behavior: none;
+  /* The document never scrolls — the terminal area scrolls internally instead.
+     iOS Safari ignores `overflow: hidden` for its rubber-band/page-pan, so we
+     also positionally lock the page: a fixed, full-viewport body has nothing to
+     scroll and cannot bounce. */
+  overflow: hidden;
+  position: fixed;
+  inset: 0;
+  width: 100%;
 }
 
 #app {
   display: flex;
   flex-direction: column;
-  height: 100dvh;
+  /* --app-h is set from visualViewport.height (the area above the iOS keyboard)
+     so the terminal + key toolbar stay visible while typing; 100dvh is the
+     no-JS / desktop fallback. */
+  height: var(--app-h, 100dvh);
+  overflow: hidden;
 }
 
 /* ---- top bar ---- */
@@ -122,11 +134,26 @@ body {
   flex: 1;
   min-height: 0;
   position: relative;
-  background: #000;
+  background: #0b0d12;
+  /* The browser must not pan/scroll the page when a finger drags here — JS owns
+     the gesture and turns it into terminal scrolling (see setupTouchScroll). */
+  touch-action: none;
+  overflow: hidden;
 }
 .term-wrap .xterm {
   height: 100%;
   padding: 6px 8px;
+}
+/* `touch-action` is NOT inherited, so the wrapper's `touch-action: none` does
+   not cover the elements a finger actually lands on — xterm's `.xterm-screen`
+   and the natively-scrollable `.xterm-viewport` (overflow-y: scroll) default to
+   `touch-action: auto`. iOS chooses the gesture from the *touched* element, so
+   it claims the drag for page-panning before our touchmove handler can cancel
+   it. Pin every descendant to `none` so JS owns the gesture (see
+   setupTouchScroll). */
+.term-wrap .xterm,
+.term-wrap .xterm * {
+  touch-action: none;
 }
 .empty {
   display: flex;

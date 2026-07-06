@@ -1,6 +1,7 @@
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import './styles.css'
+import { setupTouchScroll } from './touch-scroll'
 import type {
   AppState,
   BridgeClientMessage,
@@ -229,6 +230,25 @@ function syncSize(): void {
   }
 }
 
+/**
+ * iOS soft-keyboard handling. The layout viewport (and `100dvh`) does NOT shrink
+ * when the on-screen keyboard opens, so the keyboard overlays the bottom of the
+ * terminal and hides what you're typing. `visualViewport.height` is the region
+ * *above* the keyboard — drive the app height from it and refit xterm so the
+ * cursor line and key toolbar stay visible.
+ */
+function setupViewport(): void {
+  const vv = window.visualViewport
+  if (!vv) return
+  const apply = (): void => {
+    document.documentElement.style.setProperty('--app-h', `${Math.round(vv.height)}px`)
+    syncSize()
+  }
+  vv.addEventListener('resize', apply)
+  vv.addEventListener('scroll', apply)
+  apply()
+}
+
 // ---- rendering ----
 
 function renderPairing(): void {
@@ -367,6 +387,38 @@ function hideEmpty(): void {
 
 // ---- xterm ----
 
+/**
+ * A vibrant, high-contrast palette. xterm's default ANSI colors are muddy on a
+ * dark background (the normal blue all but disappears), so we ship a tuned 16
+ * colors plus a brighter foreground. A near-black (not pure #000) background is
+ * easier on the eyes and lifts color saturation perceptually.
+ */
+const TERM_THEME = {
+  background: '#0b0d12',
+  foreground: '#f6f8fc',
+  cursor: '#5ccfe6',
+  cursorAccent: '#0b0d12',
+  selectionBackground: '#2d4f67',
+  // normal
+  black: '#6b758c',
+  red: '#ff7782',
+  green: '#7af3a4',
+  yellow: '#ffd75e',
+  blue: '#7fb0ff',
+  magenta: '#d4a6ff',
+  cyan: '#69d8ee',
+  white: '#e3e8f1',
+  // bright
+  brightBlack: '#7c8696',
+  brightRed: '#ff97a0',
+  brightGreen: '#a3ffc4',
+  brightYellow: '#ffe79e',
+  brightBlue: '#a3c6ff',
+  brightMagenta: '#e5c6ff',
+  brightCyan: '#9cf0fd',
+  brightWhite: '#ffffff',
+}
+
 function setupTerminal(): void {
   const wrap = document.getElementById('termwrap')
   if (!wrap) return
@@ -374,13 +426,16 @@ function setupTerminal(): void {
     cursorBlink: true,
     fontSize: 13,
     fontFamily: 'ui-monospace, Menlo, Consolas, monospace',
-    theme: { background: '#000000', foreground: '#e5e7eb', cursor: '#5ccfe6' },
+    theme: TERM_THEME,
     scrollback: 5000,
   })
   fit = new FitAddon()
   term.loadAddon(fit)
   term.open(wrap)
   syncSize()
+  setupTouchScroll(term, (data) => {
+    if (ui.currentTermId) send({ type: 'input', id: ui.currentTermId, data })
+  })
 
   term.onData((data) => {
     let out = data
@@ -398,15 +453,20 @@ interface KeyDef {
   label: string
   seq?: string
   ctrl?: boolean
+  /** A cursor key (A/B/C/D) sent in a way that respects application cursor mode. */
+  cursor?: 'A' | 'B' | 'C' | 'D'
+  /** Just focus the terminal to open the device keyboard. */
+  focus?: boolean
 }
 const KEYS: KeyDef[] = [
+  { label: '⌨', focus: true },
   { label: 'esc', seq: '\x1b' },
   { label: 'tab', seq: '\t' },
   { label: 'ctrl', ctrl: true },
-  { label: '↑', seq: '\x1b[A' },
-  { label: '↓', seq: '\x1b[B' },
-  { label: '←', seq: '\x1b[D' },
-  { label: '→', seq: '\x1b[C' },
+  { label: '↑', cursor: 'A' },
+  { label: '↓', cursor: 'B' },
+  { label: '←', cursor: 'D' },
+  { label: '→', cursor: 'C' },
   { label: '^C', seq: '\x03' },
   { label: '^D', seq: '\x04' },
   { label: '^Z', seq: '\x1a' },
@@ -425,11 +485,22 @@ function setupKeys(): void {
   el.querySelectorAll('.key').forEach((node) => {
     node.addEventListener('click', () => {
       const def = KEYS[Number((node as HTMLElement).dataset.i)]
+      if (def.focus) {
+        term?.focus()
+        return
+      }
       if (def.ctrl) {
         setCtrl(!ctrlSticky)
         return
       }
-      if (def.seq && ui.currentTermId) send({ type: 'input', id: ui.currentTermId, data: def.seq })
+      let seq = def.seq
+      if (def.cursor) {
+        // Apps that enable DECCKM (vim, many TUIs, readline) expect the SS3 form
+        // (\x1bO_) rather than CSI (\x1b[_); honour the terminal's current mode.
+        const prefix = term?.modes.applicationCursorKeysMode ? '\x1bO' : '\x1b['
+        seq = prefix + def.cursor
+      }
+      if (seq && ui.currentTermId) send({ type: 'input', id: ui.currentTermId, data: seq })
       term?.focus()
     })
   })
@@ -559,6 +630,8 @@ if (hashToken) {
   setToken(hashToken)
   history.replaceState(null, '', location.pathname)
 }
+
+setupViewport()
 
 if (getToken()) connect()
 else renderPairing()
