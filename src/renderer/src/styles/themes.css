@@ -15,7 +15,7 @@
   [data-theme='halcyon'] {
     color-scheme: dark;
 
-    --foreground: #a2aabc;
+    --foreground: #e4e9f3;
 
     --surface: #1d2433;
     --surface-foreground: var(--foreground);
@@ -67,21 +67,24 @@
 
     --terminal-cursor: #ffcc66;
     --terminal-selection: rgba(255, 204, 102, 0.3);
-    --ansi-black: #2f3b54;
-    --ansi-red: #ef6b73;
-    --ansi-green: #bae67e;
-    --ansi-yellow: #ffcc66;
-    --ansi-blue: #5ccfe6;
-    --ansi-magenta: #c3a6ff;
-    --ansi-cyan: #5ccfe6;
-    --ansi-white: #a2aabc;
-    --ansi-bright-black: #444a5e;
-    --ansi-bright-red: #ef6b73;
-    --ansi-bright-green: #bae67e;
-    --ansi-bright-yellow: #ffcc66;
-    --ansi-bright-blue: #5ccfe6;
-    --ansi-bright-magenta: #c3a6ff;
-    --ansi-bright-cyan: #5ccfe6;
-    --ansi-bright-white: #a2aabc;
+    /* Halcyon-rooted but vibrant: blue is distinct from cyan, normals are
+       saturated, and every bright slot is genuinely brighter than its normal
+       so bold/colored output actually pops. */
+    --ansi-black: #6f7ca4;
+    --ansi-red: #ff9098;
+    --ansi-green: #c7f58a;
+    --ansi-yellow: #ffd778;
+    --ansi-blue: #9bb8ff;
+    --ansi-magenta: #d6b8ff;
+    --ansi-cyan: #7ddef0;
+    --ansi-white: #e4e9f3;
+    --ansi-bright-black: #838fad;
+    --ansi-bright-red: #ffafb5;
+    --ansi-bright-green: #d8f7a8;
+    --ansi-bright-yellow: #ffe6a3;
+    --ansi-bright-blue: #bcd2ff;
+    --ansi-bright-magenta: #e7d3ff;
+    --ansi-bright-cyan: #a6ecfa;
+    --ansi-bright-white: #ffffff;
   }
 }

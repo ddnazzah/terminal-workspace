@@ -283,6 +283,26 @@ function MobilePane() {
 
   return (
     <Pane>
+      <FieldRowHeader
+        label="Notifications"
+        actionLabel="Send test"
+        onAction={() =>
+          void window.api.system.notify({
+            title: 'wTerm',
+            body: 'Notifications are working',
+            projectId: '',
+            terminalId: '',
+          })
+        }
+      />
+      <Hint>
+        wTerm alerts you when a backgrounded session needs input, finishes a long command, or a
+        command fails. Nothing appeared after the test? Enable wTerm in System Settings ▸
+        Notifications.
+      </Hint>
+
+      <Divider />
+
       <Hint>
         Continue working in your terminals from your phone. Pair once, then open the wTerm web app
         on your phone over your private Tailscale network.

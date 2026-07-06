@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path'
 import { existsSync } from 'node:fs'
 import { registerProjectIpc } from './ipc/project'
 import { registerTerminalIpc } from './ipc/terminal'
-import { registerSystemIpc, setMainWindow } from './ipc/system'
+import { notifyForActivity, registerSystemIpc, setMainWindow } from './ipc/system'
 import { registerDialogIpc } from './ipc/dialog'
 import { registerFsIpc } from './ipc/fs'
 import { registerGitIpc } from './ipc/git'
@@ -112,6 +112,7 @@ app.whenReady().then(async () => {
   registerProjectIpc()
   registerTerminalIpc(ptyManager)
   registerSystemIpc()
+  ptyManager.setNotifyHook(notifyForActivity)
   registerDialogIpc()
   registerFsIpc()
   registerGitIpc()

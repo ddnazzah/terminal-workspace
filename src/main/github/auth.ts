@@ -17,6 +17,16 @@ interface DiskBlob {
 }
 
 const FILE_VERSION: 1 = 1
+
+/**
+ * Client id of the wTerm GitHub OAuth App (Device Flow enabled). This is NOT a
+ * secret — OAuth/GitHub App client ids are public by design — so it ships baked
+ * in, letting "Sign in with GitHub" work out of the box with no PAT and no
+ * per-user setup. A user-supplied client id (via setClientId) always overrides
+ * this default.
+ */
+const DEFAULT_CLIENT_ID = 'Ov23lif1NhaAkVWpRiVM'
+
 let cache: DiskBlob = { version: FILE_VERSION, clientId: null, authEnc: null }
 let loaded = false
 
@@ -54,7 +64,9 @@ async function persist(): Promise<void> {
 
 export async function getClientId(): Promise<string | null> {
   await ensureLoaded()
-  return cache.clientId
+  // Fall back to the baked-in app client id so device-flow login works without
+  // any per-user configuration; an explicit user-set client id takes priority.
+  return cache.clientId ?? DEFAULT_CLIENT_ID
 }
 
 export async function setClientId(clientId: string | null): Promise<void> {

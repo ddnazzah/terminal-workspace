@@ -14,7 +14,8 @@ import { BottomPanel } from './components/workspace/bottom-panel'
 import { useProjects } from './hooks/use-projects'
 import { useWindowZoom } from './lib/zoom'
 import { createProjectTerminal, useWorkspace } from '@renderer/state/store'
-import { HOME_PROJECT_ID, type Project, type TerminalRecord } from '@shared/types'
+import { stripSpinner } from './lib/terminal-title'
+import { HOME_PROJECT_ID, type ActivityStatus, type Project, type TerminalRecord } from '@shared/types'
 
 export default function App() {
   const { projects, selectedProject, addProject } = useProjects()
@@ -87,6 +88,43 @@ export default function App() {
     })
     return offExit
   }, [])
+
+  // Apply main-process activity detection to the sidebar indicators, and mark a
+  // backgrounded session unread when it needs input or finishes a command.
+  const lastActivityStatusRef = useRef<Record<string, ActivityStatus>>({})
+  useEffect(() => {
+    return window.api.terminals.onActivity((p) => {
+      const s = useWorkspace.getState()
+      // setTerminalBusy(true) also clears attention, so set busy first.
+      s.setTerminalBusy(p.id, p.status === 'busy')
+      s.setTerminalAttention(p.id, p.status === 'attention')
+      s.setTerminalTitle(p.id, p.title ? stripSpinner(p.title) : '')
+
+      const prev = lastActivityStatusRef.current[p.id]
+      lastActivityStatusRef.current[p.id] = p.status
+      const selId = s.selectedProjectId
+      const visibleId = selId ? s.activeTerminalByProject[selId] ?? null : null
+      const visible = document.hasFocus() && p.id === visibleId
+      if (visible) return
+      const worthMarking = p.status === 'attention' || (prev === 'busy' && p.status === 'idle')
+      if (worthMarking) s.bumpUnread(p.id)
+    })
+  }, [])
+
+  // Report the on-screen session (and window focus) to main so it can suppress
+  // notifications for the terminal the user is already looking at.
+  useEffect(() => {
+    const report = (): void => {
+      window.api.terminals.setFocused({ id: activeTerminalId, windowFocused: document.hasFocus() })
+    }
+    report()
+    window.addEventListener('focus', report)
+    window.addEventListener('blur', report)
+    return () => {
+      window.removeEventListener('focus', report)
+      window.removeEventListener('blur', report)
+    }
+  }, [activeTerminalId])
 
   useEffect(() => {
     const offFocus = window.api.system.onFocusTerminal(({ projectId, terminalId }) => {
