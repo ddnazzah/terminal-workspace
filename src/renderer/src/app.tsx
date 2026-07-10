@@ -14,6 +14,7 @@ import { BottomPanel } from './components/workspace/bottom-panel'
 import { useProjects } from './hooks/use-projects'
 import { useWindowZoom } from './lib/zoom'
 import { createProjectTerminal, useWorkspace } from '@renderer/state/store'
+import { useGithub } from './state/github'
 import { stripSpinner } from './lib/terminal-title'
 import { HOME_PROJECT_ID, type ActivityStatus, type Project, type TerminalRecord } from '@shared/types'
 
@@ -42,6 +43,11 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false)
 
   useWindowZoom()
+
+  // Load GitHub auth state once; ProfileMenu and GitPanel both read this store.
+  useEffect(() => {
+    void useGithub.getState().refresh()
+  }, [])
 
   // Toggle the Home terminal dock. Opening with no Home terminals starts one by
   // default so you always land in a live shell.
