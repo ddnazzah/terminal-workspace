@@ -31,6 +31,12 @@ export interface TerminalRecord {
    * were idling at a prompt.
    */
   agent?: { command: string; cwd: string }
+  /**
+   * Who owns the current name. 'user' = set by an explicit manual rename and
+   * protected from auto-naming. 'auto' (or unset, for records persisted before
+   * this field existed) = eligible to be overwritten by the agent's task title.
+   */
+  nameSource?: 'auto' | 'user'
 }
 
 export interface Project {

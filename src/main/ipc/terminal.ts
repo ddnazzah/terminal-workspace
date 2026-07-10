@@ -8,6 +8,7 @@ import {
   type TerminalId,
   type TerminalRecord,
 } from '@shared/types'
+import { applyRename, type NameSource } from '@shared/rename'
 import { getProject, getState, mutate, removeTerminal, upsertTerminal } from '../store/state'
 import { getDefaultShell } from '../pty/shell-integration'
 import { buildResumeCommand, isClaudeLaunch, withSessionId } from '../pty/claude-session'
@@ -47,6 +48,7 @@ export function createTerminal(
       name: existing?.name ?? opts.name ?? `Terminal ${project.terminals.length + 1}`,
       shell: existing?.shell ?? shell,
       claudeSessionId: opts.resumeSessionId,
+      ...(existing?.nameSource ? { nameSource: existing.nameSource } : {}),
     }
     upsertTerminal(project.id, record)
     pty.create({
@@ -85,10 +87,17 @@ export function createTerminal(
   return record
 }
 
-export function renameTerminal(projectId: ProjectId, id: TerminalId, name: string): void {
+export function renameTerminal(
+  projectId: ProjectId,
+  id: TerminalId,
+  name: string,
+  source: NameSource = 'user'
+): void {
   const project = getProject(projectId)
   const t = project?.terminals.find((x) => x.id === id)
-  if (project && t) upsertTerminal(project.id, { ...t, name })
+  if (!project || !t) return
+  const next = applyRename(t, name, source)
+  if (next !== t) upsertTerminal(project.id, next)
 }
 
 export function removeTerminalRecord(pty: PtyManager, projectId: ProjectId, id: TerminalId): void {
@@ -128,8 +137,8 @@ export function registerTerminalIpc(pty: PtyManager): void {
 
   ipcMain.handle(
     IPC.terminals.rename,
-    (_e, projectId: string, id: string, name: string): void => {
-      renameTerminal(projectId, id, name)
+    (_e, projectId: string, id: string, name: string, source?: NameSource): void => {
+      renameTerminal(projectId, id, name, source ?? 'user')
     }
   )
 

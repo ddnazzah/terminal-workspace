@@ -41,8 +41,14 @@ export function TerminalSidebarItem({
   const commit = (): void => {
     setEditing(false)
     const trimmed = draft.trim()
-    if (trimmed && trimmed !== terminal.name) onRename(trimmed)
-    else setDraft(terminal.name)
+    if (trimmed && trimmed !== terminal.name) {
+      onRename(trimmed)
+      return
+    }
+    // Clearing a manually-set name re-enables auto-naming (name is kept until
+    // the agent's next task title replaces it).
+    if (!trimmed && terminal.nameSource === 'user') onRename('')
+    setDraft(terminal.name)
   }
 
   return (

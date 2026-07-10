@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { HOME_PROJECT_ID } from '@shared/types'
 import type { Project, ProjectId, TerminalId, TerminalRecord } from '@shared/types'
+import { applyRename, type NameSource } from '@shared/rename'
 import { useSettings } from './settings'
 
 export const SIDEBAR_MIN_WIDTH = 180
@@ -217,7 +218,12 @@ interface WorkspaceState {
 
   addTerminal: (projectId: ProjectId, terminal: TerminalRecord) => void
   removeTerminalLocal: (projectId: ProjectId, terminalId: TerminalId) => void
-  renameTerminalLocal: (projectId: ProjectId, terminalId: TerminalId, name: string) => void
+  renameTerminalLocal: (
+    projectId: ProjectId,
+    terminalId: TerminalId,
+    name: string,
+    source?: NameSource
+  ) => void
   setActiveTerminal: (projectId: ProjectId, terminalId: TerminalId | null) => void
   reorderTerminal: (projectId: ProjectId, fromIndex: number, toIndex: number) => void
 
@@ -626,16 +632,28 @@ export const useWorkspace = create<WorkspaceState>((set) => ({
     }
   },
 
-  renameTerminalLocal: (projectId, terminalId, name) =>
+  renameTerminalLocal: (projectId, terminalId, name, source = 'user') =>
     set((state) => {
-      const { [terminalId]: _omittedTitle, ...titleRest } = state.titleByTerminal
+      // A manual rename should show immediately, so it clears the live agent
+      // title (which has display priority). Auto-renames come *from* that
+      // title and must leave it alone.
+      let titleByTerminal = state.titleByTerminal
+      if (source === 'user') {
+        const { [terminalId]: _omittedTitle, ...titleRest } = state.titleByTerminal
+        titleByTerminal = titleRest
+      }
       return {
         projects: state.projects.map((p) =>
           p.id === projectId
-            ? { ...p, terminals: p.terminals.map((t) => (t.id === terminalId ? { ...t, name } : t)) }
+            ? {
+                ...p,
+                terminals: p.terminals.map((t) =>
+                  t.id === terminalId ? applyRename(t, name, source) : t
+                ),
+              }
             : p
         ),
-        titleByTerminal: titleRest,
+        titleByTerminal,
       }
     }),
 

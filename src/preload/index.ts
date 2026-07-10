@@ -59,8 +59,12 @@ const api = {
       ipcRenderer.invoke(IPC.terminals.resize, id, cols, rows),
     kill: (id: string): Promise<void> =>
       ipcRenderer.invoke(IPC.terminals.kill, id),
-    rename: (projectId: string, id: string, name: string): Promise<void> =>
-      ipcRenderer.invoke(IPC.terminals.rename, projectId, id, name),
+    rename: (
+      projectId: string,
+      id: string,
+      name: string,
+      source: 'auto' | 'user' = 'user'
+    ): Promise<void> => ipcRenderer.invoke(IPC.terminals.rename, projectId, id, name, source),
     removeRecord: (projectId: string, id: string): void => {
       ipcRenderer.send('terminals:remove-record', projectId, id)
     },
