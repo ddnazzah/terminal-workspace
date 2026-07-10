@@ -15,6 +15,7 @@ import {
 } from '@shared/types'
 import { getProject } from '../store/state'
 import { getGitInfo } from '../git/local'
+import { resolveRepoPath } from './git'
 import {
   deviceCodeRequest,
   devicePollOnce,
@@ -43,10 +44,15 @@ async function settings(): Promise<GitHubSettings> {
   }
 }
 
-async function repoFor(projectId: ProjectId): Promise<{ owner: string; repo: string } | null> {
+async function repoFor(
+  projectId: ProjectId,
+  repoRel = ''
+): Promise<{ owner: string; repo: string } | null> {
   const project = getProject(projectId)
   if (!project) return null
-  const info = await getGitInfo(project.path)
+  const path = await resolveRepoPath(project.path, repoRel)
+  if (!path) return null
+  const info = await getGitInfo(path)
   return info.githubRepo
 }
 
@@ -221,8 +227,13 @@ export function registerGitHubIpc(): void {
 
   ipcMain.handle(
     IPC.github.listPullRequests,
-    async (_e, projectId: ProjectId, state: 'open' | 'closed' | 'all' = 'open') => {
-      const repo = await repoFor(projectId)
+    async (
+      _e,
+      projectId: ProjectId,
+      state: 'open' | 'closed' | 'all' = 'open',
+      repoRel = ''
+    ) => {
+      const repo = await repoFor(projectId, repoRel)
       if (!repo) return []
       const list = await gh.get<GhPr[]>(
         `/repos/${repo.owner}/${repo.repo}/pulls?state=${state}&per_page=30&sort=updated&direction=desc`
@@ -233,8 +244,13 @@ export function registerGitHubIpc(): void {
 
   ipcMain.handle(
     IPC.github.getPullRequest,
-    async (_e, projectId: ProjectId, number: number): Promise<PullRequestDetail | null> => {
-      const repo = await repoFor(projectId)
+    async (
+      _e,
+      projectId: ProjectId,
+      number: number,
+      repoRel = ''
+    ): Promise<PullRequestDetail | null> => {
+      const repo = await repoFor(projectId, repoRel)
       if (!repo) return null
       const [pr, comments] = await Promise.all([
         gh.get<GhPr>(`/repos/${repo.owner}/${repo.repo}/pulls/${number}`),
@@ -289,7 +305,7 @@ export function registerGitHubIpc(): void {
   ipcMain.handle(
     IPC.github.createPullRequest,
     async (_e, input: CreatePullRequestInput): Promise<PullRequestSummary> => {
-      const repo = await repoFor(input.projectId)
+      const repo = await repoFor(input.projectId, input.repoRel ?? '')
       if (!repo) throw new Error('not a github repo')
       const pr = await gh.post<GhPr>(`/repos/${repo.owner}/${repo.repo}/pulls`, {
         title: input.title,
@@ -308,9 +324,10 @@ export function registerGitHubIpc(): void {
       _e,
       projectId: ProjectId,
       number: number,
-      method: 'merge' | 'squash' | 'rebase' = 'squash'
+      method: 'merge' | 'squash' | 'rebase' = 'squash',
+      repoRel = ''
     ) => {
-      const repo = await repoFor(projectId)
+      const repo = await repoFor(projectId, repoRel)
       if (!repo) throw new Error('not a github repo')
       await gh.put(`/repos/${repo.owner}/${repo.repo}/pulls/${number}/merge`, {
         merge_method: method,
@@ -321,8 +338,8 @@ export function registerGitHubIpc(): void {
 
   ipcMain.handle(
     IPC.github.commentPullRequest,
-    async (_e, projectId: ProjectId, number: number, body: string) => {
-      const repo = await repoFor(projectId)
+    async (_e, projectId: ProjectId, number: number, body: string, repoRel = '') => {
+      const repo = await repoFor(projectId, repoRel)
       if (!repo) throw new Error('not a github repo')
       await gh.post(`/repos/${repo.owner}/${repo.repo}/issues/${number}/comments`, { body })
       return { ok: true }
@@ -333,8 +350,8 @@ export function registerGitHubIpc(): void {
 
   ipcMain.handle(
     IPC.github.listWorkflows,
-    async (_e, projectId: ProjectId): Promise<WorkflowSummary[]> => {
-      const repo = await repoFor(projectId)
+    async (_e, projectId: ProjectId, repoRel = ''): Promise<WorkflowSummary[]> => {
+      const repo = await repoFor(projectId, repoRel)
       if (!repo) return []
       const res = await gh.get<{
         workflows: Array<{ id: number; name: string; path: string; state: string }>
@@ -350,8 +367,8 @@ export function registerGitHubIpc(): void {
 
   ipcMain.handle(
     IPC.github.listRuns,
-    async (_e, projectId: ProjectId, opts?: { branch?: string }) => {
-      const repo = await repoFor(projectId)
+    async (_e, projectId: ProjectId, opts?: { branch?: string }, repoRel = '') => {
+      const repo = await repoFor(projectId, repoRel)
       if (!repo) return []
       const params = new URLSearchParams({ per_page: '20' })
       if (opts?.branch) params.set('branch', opts.branch)
@@ -364,8 +381,13 @@ export function registerGitHubIpc(): void {
 
   ipcMain.handle(
     IPC.github.getRun,
-    async (_e, projectId: ProjectId, runId: number): Promise<WorkflowRunDetail | null> => {
-      const repo = await repoFor(projectId)
+    async (
+      _e,
+      projectId: ProjectId,
+      runId: number,
+      repoRel = ''
+    ): Promise<WorkflowRunDetail | null> => {
+      const repo = await repoFor(projectId, repoRel)
       if (!repo) return null
       const [run, jobs] = await Promise.all([
         gh.get<GhRun>(`/repos/${repo.owner}/${repo.repo}/actions/runs/${runId}`),
@@ -379,8 +401,8 @@ export function registerGitHubIpc(): void {
 
   ipcMain.handle(
     IPC.github.rerunRun,
-    async (_e, projectId: ProjectId, runId: number) => {
-      const repo = await repoFor(projectId)
+    async (_e, projectId: ProjectId, runId: number, repoRel = '') => {
+      const repo = await repoFor(projectId, repoRel)
       if (!repo) throw new Error('not a github repo')
       await gh.post(`/repos/${repo.owner}/${repo.repo}/actions/runs/${runId}/rerun`)
       return { ok: true }
@@ -389,8 +411,8 @@ export function registerGitHubIpc(): void {
 
   ipcMain.handle(
     IPC.github.rerunFailed,
-    async (_e, projectId: ProjectId, runId: number) => {
-      const repo = await repoFor(projectId)
+    async (_e, projectId: ProjectId, runId: number, repoRel = '') => {
+      const repo = await repoFor(projectId, repoRel)
       if (!repo) throw new Error('not a github repo')
       await gh.post(`/repos/${repo.owner}/${repo.repo}/actions/runs/${runId}/rerun-failed-jobs`)
       return { ok: true }
@@ -399,8 +421,8 @@ export function registerGitHubIpc(): void {
 
   ipcMain.handle(
     IPC.github.cancelRun,
-    async (_e, projectId: ProjectId, runId: number) => {
-      const repo = await repoFor(projectId)
+    async (_e, projectId: ProjectId, runId: number, repoRel = '') => {
+      const repo = await repoFor(projectId, repoRel)
       if (!repo) throw new Error('not a github repo')
       await gh.post(`/repos/${repo.owner}/${repo.repo}/actions/runs/${runId}/cancel`)
       return { ok: true }
@@ -414,9 +436,10 @@ export function registerGitHubIpc(): void {
       projectId: ProjectId,
       workflowId: number,
       ref: string,
-      inputs?: Record<string, string>
+      inputs?: Record<string, string>,
+      repoRel = ''
     ) => {
-      const repo = await repoFor(projectId)
+      const repo = await repoFor(projectId, repoRel)
       if (!repo) throw new Error('not a github repo')
       await gh.post(
         `/repos/${repo.owner}/${repo.repo}/actions/workflows/${workflowId}/dispatches`,
