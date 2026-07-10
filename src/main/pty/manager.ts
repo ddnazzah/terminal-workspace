@@ -203,6 +203,7 @@ export class PtyManager {
       status: next.status,
       title: next.title,
       exitCode: next.lastExitCode,
+      isAgent: next.mode === 'agent',
     }
     this.window?.webContents.send(IPC.terminals.activity, payload)
     this.notifyHook?.(id, prev, next)

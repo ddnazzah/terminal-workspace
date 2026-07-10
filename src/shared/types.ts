@@ -94,6 +94,8 @@ export type SessionActivityPayload = {
   status: ActivityStatus
   title: string | null
   exitCode: number | null
+  /** True when the title comes from an agent (Claude Code etc.), not a plain shell. */
+  isAgent: boolean
 }
 /** Sent by the renderer so main can suppress notifications for the on-screen session. */
 export type SetFocusedPayload = { id: TerminalId | null; windowFocused: boolean }
