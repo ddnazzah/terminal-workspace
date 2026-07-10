@@ -6,6 +6,7 @@ export interface StoredAuth {
   token: string
   login: string | null
   source: 'pat' | 'device'
+  avatarUrl?: string | null
 }
 
 interface DiskBlob {
@@ -183,7 +184,12 @@ export async function devicePollOnce(
   }
 }
 
-export async function fetchAuthenticatedLogin(token: string): Promise<string | null> {
+export interface AuthenticatedUser {
+  login: string
+  avatarUrl: string | null
+}
+
+export async function fetchAuthenticatedUser(token: string): Promise<AuthenticatedUser | null> {
   const res = await fetch('https://api.github.com/user', {
     headers: {
       Authorization: `Bearer ${token}`,
@@ -192,6 +198,7 @@ export async function fetchAuthenticatedLogin(token: string): Promise<string | n
     },
   })
   if (!res.ok) return null
-  const body = (await res.json()) as { login?: string }
-  return body.login ?? null
+  const body = (await res.json()) as { login?: string; avatar_url?: string | null }
+  if (!body.login) return null
+  return { login: body.login, avatarUrl: body.avatar_url ?? null }
 }

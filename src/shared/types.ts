@@ -314,6 +314,8 @@ export interface GitHubSettings {
   login: string | null
   /** how the token was obtained */
   source: 'pat' | 'device' | null
+  /** avatar of the authenticated user; null for pre-existing sessions that signed in before it was captured */
+  avatarUrl: string | null
 }
 
 export interface DeviceFlowStart {

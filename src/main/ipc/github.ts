@@ -18,7 +18,7 @@ import { getGitInfo } from '../git/local'
 import {
   deviceCodeRequest,
   devicePollOnce,
-  fetchAuthenticatedLogin,
+  fetchAuthenticatedUser,
   getAuth,
   getClientId,
   setAuth,
@@ -40,6 +40,7 @@ async function settings(): Promise<GitHubSettings> {
     hasToken: !!auth,
     login: auth?.login ?? null,
     source: auth?.source ?? null,
+    avatarUrl: auth?.avatarUrl ?? null,
   }
 }
 
@@ -164,9 +165,9 @@ export function registerGitHubIpc(): void {
   ipcMain.handle(IPC.github.setToken, async (_e, token: string) => {
     const trimmed = token.trim()
     if (!trimmed) throw new Error('empty token')
-    const login = await fetchAuthenticatedLogin(trimmed)
-    if (!login) throw new Error('token rejected by github')
-    await setAuth({ token: trimmed, login, source: 'pat' })
+    const user = await fetchAuthenticatedUser(trimmed)
+    if (!user) throw new Error('token rejected by github')
+    await setAuth({ token: trimmed, login: user.login, source: 'pat', avatarUrl: user.avatarUrl })
     return settings()
   })
 
@@ -205,10 +206,15 @@ export function registerGitHubIpc(): void {
       if (!pending) return { status: 'error', error: 'unknown_device_code' }
       const result = await devicePollOnce(pending.clientId, deviceCode)
       if (result.status === 'authorized') {
-        const login = await fetchAuthenticatedLogin(result.token)
-        await setAuth({ token: result.token, login, source: 'device' })
+        const user = await fetchAuthenticatedUser(result.token)
+        await setAuth({
+          token: result.token,
+          login: user?.login ?? null,
+          source: 'device',
+          avatarUrl: user?.avatarUrl ?? null,
+        })
         pendingDevice.delete(deviceCode)
-        return { status: 'authorized', login: login ?? 'github' }
+        return { status: 'authorized', login: user?.login ?? 'github' }
       }
       if (result.status === 'error') {
         pendingDevice.delete(deviceCode)
