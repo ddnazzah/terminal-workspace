@@ -8,9 +8,7 @@ interface Props {
 
 export function ProfileSignIn({ settings }: Props) {
   const refresh = useGithub((s) => s.refresh)
-  const [mode, setMode] = useState<'choose' | 'pat' | 'device' | 'configure-client'>(
-    settings.clientId ? 'choose' : 'choose'
-  )
+  const [mode, setMode] = useState<'choose' | 'pat' | 'device' | 'configure-client'>('choose')
   const [patValue, setPatValue] = useState('')
   const [clientIdValue, setClientIdValue] = useState(settings.clientId ?? '')
   const [device, setDevice] = useState<DeviceFlowStart | null>(null)
@@ -18,14 +16,19 @@ export function ProfileSignIn({ settings }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const pollTimer = useRef<number | null>(null)
+  // Bumped on cancel/unmount so an in-flight devicePoll can't apply state or
+  // reschedule after the loop it belongs to was abandoned.
+  const pollGeneration = useRef(0)
 
   useEffect(() => {
     return () => {
+      pollGeneration.current += 1
       if (pollTimer.current) window.clearTimeout(pollTimer.current)
     }
   }, [])
 
   const cancelDevice = () => {
+    pollGeneration.current += 1
     if (pollTimer.current) window.clearTimeout(pollTimer.current)
     pollTimer.current = null
     setDevice(null)
@@ -49,9 +52,12 @@ export function ProfileSignIn({ settings }: Props) {
   }
 
   const poll = (deviceCode: string, intervalMs: number): void => {
+    const gen = pollGeneration.current
     pollTimer.current = window.setTimeout(async () => {
+      if (pollGeneration.current !== gen) return
       try {
         const result = await window.api.github.devicePoll(deviceCode)
+        if (pollGeneration.current !== gen) return
         if (result.status === 'authorized') {
           setPollStatus(`Signed in as ${result.login}`)
           await refresh()
@@ -71,6 +77,7 @@ export function ProfileSignIn({ settings }: Props) {
           setError(result.description ?? result.error)
         }
       } catch (err) {
+        if (pollGeneration.current !== gen) return
         setError(err instanceof Error ? err.message : String(err))
       }
     }, intervalMs)

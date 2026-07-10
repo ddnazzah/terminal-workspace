@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
+import { isMac } from '@renderer/lib/platform'
 import { useGithub } from '@renderer/state/github'
 import { ProfileSignIn } from './profile-sign-in'
 
@@ -19,6 +20,7 @@ export function ProfileMenu({ onOpenSettings }: Props) {
   // Index into avatar candidates; bumped past a source when its <img> errors.
   const [avatarAttempt, setAvatarAttempt] = useState(0)
   const rootRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
     if (!open) return
@@ -26,7 +28,10 @@ export function ProfileMenu({ onOpenSettings }: Props) {
       if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false)
     }
     const onKeyDown = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') setOpen(false)
+      if (e.key === 'Escape') {
+        setOpen(false)
+        triggerRef.current?.focus()
+      }
     }
     document.addEventListener('pointerdown', onPointerDown)
     document.addEventListener('keydown', onKeyDown)
@@ -46,6 +51,11 @@ export function ProfileMenu({ onOpenSettings }: Props) {
   const showAvatar = !!avatarSrc
 
   useEffect(() => setAvatarAttempt(0), [settings?.avatarUrl, login])
+
+  // Both <img>s can fire onError for the same broken URL; only advance the
+  // candidate index when the failing src is still the current candidate.
+  const handleAvatarError = (failedSrc: string): void =>
+    setAvatarAttempt((n) => (avatarCandidates[n] === failedSrc ? n + 1 : n))
 
   const openProfile = (): void => {
     if (login) void window.api.system.openExternal(`https://github.com/${login}`)
@@ -77,11 +87,12 @@ export function ProfileMenu({ onOpenSettings }: Props) {
   return (
     <div ref={rootRef} className="relative">
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-label={login ? `GitHub account: ${login}` : 'GitHub account'}
         aria-expanded={open}
-        aria-haspopup="menu"
+        aria-haspopup="true"
         title={login ? `GitHub: ${login}` : 'GitHub account'}
         className={[
           'flex items-center justify-center w-7 h-7 rounded-full overflow-hidden transition-colors',
@@ -96,7 +107,7 @@ export function ProfileMenu({ onOpenSettings }: Props) {
             alt={login ?? 'GitHub avatar'}
             className="w-[22px] h-[22px] rounded-full object-cover"
             referrerPolicy="no-referrer"
-            onError={() => setAvatarAttempt((n) => n + 1)}
+            onError={() => handleAvatarError(avatarSrc)}
           />
         ) : (
           personIcon
@@ -104,10 +115,7 @@ export function ProfileMenu({ onOpenSettings }: Props) {
       </button>
 
       {open && (
-        <div
-          role="menu"
-          className="absolute right-0 top-full mt-1.5 w-64 rounded-lg border border-accent/10 bg-background shadow-xl z-50 overflow-hidden"
-        >
+        <div className="absolute right-0 top-full mt-1.5 w-64 rounded-lg border border-accent/10 bg-background shadow-xl z-50 overflow-hidden [-webkit-app-region:no-drag]">
           {!settings && (
             <div className="px-3 py-4 text-[11px] text-foreground/40">Loading…</div>
           )}
@@ -124,7 +132,7 @@ export function ProfileMenu({ onOpenSettings }: Props) {
                       alt={login ?? 'GitHub avatar'}
                       className="w-8 h-8 rounded-full object-cover"
                       referrerPolicy="no-referrer"
-                      onError={() => setAvatarAttempt((n) => n + 1)}
+                      onError={() => handleAvatarError(avatarSrc)}
                     />
                   ) : (
                     personIcon
@@ -140,19 +148,21 @@ export function ProfileMenu({ onOpenSettings }: Props) {
                 </div>
               </div>
 
-              <div className="py-1">
-                <MenuItem onClick={openProfile} disabled={!login}>
-                  Open GitHub profile
-                </MenuItem>
-                <MenuItem onClick={openSettings} hint="⌘,">
-                  Settings
-                </MenuItem>
-              </div>
+              <div role="menu">
+                <div className="py-1">
+                  <MenuItem onClick={openProfile} disabled={!login}>
+                    Open GitHub profile
+                  </MenuItem>
+                  <MenuItem onClick={openSettings} hint={isMac ? '⌘,' : 'Ctrl+,'}>
+                    Settings
+                  </MenuItem>
+                </div>
 
-              <div className="py-1 border-t border-accent/7">
-                <MenuItem onClick={() => void signOut()} danger>
-                  Sign out
-                </MenuItem>
+                <div className="py-1 border-t border-accent/7">
+                  <MenuItem onClick={() => void signOut()} danger>
+                    Sign out
+                  </MenuItem>
+                </div>
               </div>
             </>
           )}
