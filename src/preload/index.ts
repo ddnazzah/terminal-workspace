@@ -18,6 +18,7 @@ import {
   type ProjectId,
   type PullRequestDetail,
   type PullRequestSummary,
+  type RepoRef,
   type TerminalDataPayload,
   type TerminalExitPayload,
   type SessionActivityPayload,
@@ -168,10 +169,16 @@ const api = {
     pathForFile: (file: File): string => webUtils.getPathForFile(file),
   },
   git: {
-    info: (projectId: ProjectId): Promise<GitInfo> =>
-      ipcRenderer.invoke(IPC.git.info, projectId),
-    push: (projectId: ProjectId, branch: string): Promise<{ ok: boolean; output: string }> =>
-      ipcRenderer.invoke(IPC.git.push, projectId, branch),
+    repos: (projectId: ProjectId): Promise<RepoRef[]> =>
+      ipcRenderer.invoke(IPC.git.repos, projectId),
+    info: (projectId: ProjectId, repoRel = ''): Promise<GitInfo> =>
+      ipcRenderer.invoke(IPC.git.info, projectId, repoRel),
+    push: (
+      projectId: ProjectId,
+      branch: string,
+      repoRel = ''
+    ): Promise<{ ok: boolean; output: string }> =>
+      ipcRenderer.invoke(IPC.git.push, projectId, branch, repoRel),
     fileStatus: (projectId: ProjectId): Promise<GitFileStatusMap> =>
       ipcRenderer.invoke(IPC.git.fileStatus, projectId),
   },
