@@ -165,6 +165,7 @@ export const IPC = {
     saveTempPaste: 'fs:save-temp-paste',
   },
   git: {
+    repos: 'git:repos',
     info: 'git:info',
     push: 'git:push',
     fileStatus: 'git:file-status',
@@ -286,6 +287,14 @@ export interface FsEntry {
 
 // ---- Local git ----
 
+/** A git repository discovered inside a project folder. */
+export interface RepoRef {
+  /** path relative to the project root, forward slashes; '' = the project root itself */
+  rel: string
+  /** display name (folder name; project folder name for the root repo) */
+  name: string
+}
+
 export interface GitInfo {
   isRepo: boolean
   branch: string | null
@@ -376,6 +385,8 @@ export interface CreatePullRequestInput {
   head: string
   base: string
   draft: boolean
+  /** repo within the project ('' or omitted = project root) */
+  repoRel?: string
 }
 
 export interface WorkflowSummary {
