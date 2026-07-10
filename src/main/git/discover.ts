@@ -17,6 +17,9 @@ async function hasGitEntry(dir: string): Promise<boolean> {
  * Hidden dirs and symlinks are skipped; unreadable entries are ignored.
  */
 export async function discoverRepos(projectPath: string): Promise<RepoRef[]> {
+  // an empty path would resolve '.git' against the process cwd — never scan it
+  if (projectPath === '') return []
+
   const rootRepo: RepoRef[] = (await hasGitEntry(projectPath))
     ? [{ rel: '', name: basename(projectPath) }]
     : []

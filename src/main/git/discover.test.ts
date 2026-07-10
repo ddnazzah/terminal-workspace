@@ -72,8 +72,25 @@ describe('discoverRepos', () => {
     await fs.rm(outside, { recursive: true, force: true })
   })
 
-  it('returns [] for an unreadable project path', async () => {
+  it('returns [] for a nonexistent project path', async () => {
     expect(await discoverRepos(join(root, 'does-not-exist'))).toEqual([])
+  })
+
+  it('returns [] for an empty project path', async () => {
+    expect(await discoverRepos('')).toEqual([])
+  })
+
+  it('still returns the root repo when children cannot be listed (EACCES)', async () => {
+    // running as root bypasses permission checks — skip there
+    if (process.getuid?.() === 0) return
+    await mkRepo()
+    await fs.chmod(root, 0o100) // execute-only: .git reachable, readdir denied
+    try {
+      const repos = await discoverRepos(root)
+      expect(repos).toEqual([{ rel: '', name: expect.any(String) }])
+    } finally {
+      await fs.chmod(root, 0o700)
+    }
   })
 })
 
