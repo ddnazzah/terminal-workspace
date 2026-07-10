@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type {
   GitFileStatusMap,
   GitHubSettings,
@@ -26,12 +26,16 @@ export function GitPanel({ project }: Props) {
   const [pushingRel, setPushingRel] = useState<string | null>(null)
   const [pushResult, setPushResult] = useState<{ rel: string; msg: string } | null>(null)
 
+  const epochRef = useRef(0)
+
   const reloadAll = useCallback(async () => {
+    const epoch = epochRef.current
     const list = await window.api.git.repos(project.id)
     const [infoList, status] = await Promise.all([
       Promise.all(list.map((r) => window.api.git.info(project.id, r.rel))),
       window.api.git.fileStatus(project.id),
     ])
+    if (epoch !== epochRef.current) return
     setRepos(list)
     setInfos(Object.fromEntries(list.map((r, i) => [r.rel, infoList[i]!])))
     setStatusMap(status)
@@ -40,6 +44,7 @@ export function GitPanel({ project }: Props) {
 
   useEffect(() => {
     let cancelled = false
+    epochRef.current += 1
     setRepos(null)
     setInfos({})
     setStatusMap({})
@@ -73,15 +78,13 @@ export function GitPanel({ project }: Props) {
 
   const activePush = useCallback((): Promise<void> => push(activeRel), [push, activeRel])
 
-  const handleHeaderClick = useCallback((rel: string) => {
-    setActiveRel((prevActive) => {
-      setCollapsed((c) => ({
-        ...c,
-        [rel]: rel === prevActive ? !c[rel] : false,
-      }))
-      return rel
-    })
-  }, [])
+  const handleHeaderClick = useCallback(
+    (rel: string) => {
+      setCollapsed((c) => ({ ...c, [rel]: rel === activeRel ? !c[rel] : false }))
+      setActiveRel(rel)
+    },
+    [activeRel]
+  )
 
   if (!settings || repos === null) {
     return <div className="px-3 py-4 text-[11px] text-foreground/40">Loading…</div>
@@ -123,13 +126,19 @@ export function GitPanel({ project }: Props) {
       {settings.hasToken && activeInfo?.githubRepo ? (
         <>
           <PrSection
+            key={`prs:${project.id}:${activeRel}`}
             project={project}
             repoRel={activeRel}
             gitInfo={activeInfo}
             pushing={pushingRel === activeRel}
             onRequestPush={activePush}
           />
-          <RunsSection project={project} repoRel={activeRel} gitInfo={activeInfo} />
+          <RunsSection
+            key={`runs:${project.id}:${activeRel}`}
+            project={project}
+            repoRel={activeRel}
+            gitInfo={activeInfo}
+          />
         </>
       ) : settings.hasToken && activeInfo && !activeInfo.githubRepo ? (
         <div className="px-3 py-4 text-[12px] text-foreground/55">
