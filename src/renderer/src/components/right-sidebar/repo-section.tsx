@@ -39,6 +39,7 @@ export function RepoSection({
           type="button"
           onClick={onHeaderClick}
           title={isActive ? repo.name : `${repo.name} — click to activate`}
+          aria-expanded={!isCollapsed}
           className="flex items-center gap-1.5 w-full px-3 py-1.5 text-left hover:bg-foreground/5"
         >
           <span aria-hidden className="text-[10px] text-foreground/40">

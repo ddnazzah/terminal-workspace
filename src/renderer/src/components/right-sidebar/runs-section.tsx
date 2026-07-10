@@ -10,10 +10,11 @@ import { CollapsibleSection } from './collapsible-section'
 
 interface Props {
   project: Project
+  repoRel: string
   gitInfo: GitInfo | null
 }
 
-export function RunsSection({ project, gitInfo }: Props) {
+export function RunsSection({ project, repoRel, gitInfo }: Props) {
   const [runs, setRuns] = useState<WorkflowRunSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -27,7 +28,8 @@ export function RunsSection({ project, gitInfo }: Props) {
     try {
       const list = await window.api.github.listRuns(
         project.id,
-        filterMine && gitInfo?.branch ? { branch: gitInfo.branch } : undefined
+        filterMine && gitInfo?.branch ? { branch: gitInfo.branch } : undefined,
+        repoRel
       )
       setRuns(list)
     } catch (err) {
@@ -35,7 +37,7 @@ export function RunsSection({ project, gitInfo }: Props) {
     } finally {
       setLoading(false)
     }
-  }, [project.id, filterMine, gitInfo?.branch])
+  }, [project.id, filterMine, gitInfo?.branch, repoRel])
 
   useEffect(() => {
     void reload()
@@ -45,6 +47,7 @@ export function RunsSection({ project, gitInfo }: Props) {
     return (
       <RunDetailView
         project={project}
+        repoRel={repoRel}
         runId={open}
         onBack={() => {
           setOpen(null)
@@ -58,6 +61,7 @@ export function RunsSection({ project, gitInfo }: Props) {
     return (
       <DispatchWorkflowForm
         project={project}
+        repoRel={repoRel}
         gitInfo={gitInfo}
         onClose={() => setDispatching(false)}
         onDispatched={() => {
@@ -150,10 +154,12 @@ function RunDot({ status, conclusion }: { status: string; conclusion: string | n
 
 function RunDetailView({
   project,
+  repoRel,
   runId,
   onBack,
 }: {
   project: Project
+  repoRel: string
   runId: number
   onBack: () => void
 }) {
@@ -166,13 +172,13 @@ function RunDetailView({
     setLoading(true)
     setError(null)
     try {
-      setRun(await window.api.github.getRun(project.id, runId))
+      setRun(await window.api.github.getRun(project.id, runId, repoRel))
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
       setLoading(false)
     }
-  }, [project.id, runId])
+  }, [project.id, runId, repoRel])
 
   useEffect(() => {
     void load()
@@ -243,7 +249,9 @@ function RunDetailView({
               <button
                 type="button"
                 disabled={busy}
-                onClick={() => void action(() => window.api.github.cancelRun(project.id, run.id))}
+                onClick={() =>
+                  void action(() => window.api.github.cancelRun(project.id, run.id, repoRel))
+                }
                 className="w-full text-[11px] py-1.5 rounded-md bg-red-500/20 hover:bg-red-500/30 text-red-200 disabled:opacity-50"
               >
                 Cancel run
@@ -255,7 +263,9 @@ function RunDetailView({
                 <button
                   type="button"
                   disabled={busy}
-                  onClick={() => void action(() => window.api.github.rerunRun(project.id, run.id))}
+                  onClick={() =>
+                    void action(() => window.api.github.rerunRun(project.id, run.id, repoRel))
+                  }
                   className="flex-1 text-[11px] py-1.5 rounded-md bg-foreground/10 hover:bg-foreground/20 disabled:opacity-50"
                 >
                   Re-run all
@@ -265,7 +275,9 @@ function RunDetailView({
                     type="button"
                     disabled={busy}
                     onClick={() =>
-                      void action(() => window.api.github.rerunFailed(project.id, run.id))
+                      void action(() =>
+                        window.api.github.rerunFailed(project.id, run.id, repoRel)
+                      )
                     }
                     className="flex-1 text-[11px] py-1.5 rounded-md bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 disabled:opacity-50"
                   >
@@ -320,11 +332,13 @@ function RunDetailView({
 
 function DispatchWorkflowForm({
   project,
+  repoRel,
   gitInfo,
   onClose,
   onDispatched,
 }: {
   project: Project
+  repoRel: string
   gitInfo: GitInfo | null
   onClose: () => void
   onDispatched: () => void
@@ -340,7 +354,7 @@ function DispatchWorkflowForm({
     let cancelled = false
     setLoading(true)
     window.api.github
-      .listWorkflows(project.id)
+      .listWorkflows(project.id, repoRel)
       .then((list) => {
         if (cancelled) return
         setWorkflows(list)
@@ -354,14 +368,14 @@ function DispatchWorkflowForm({
     return () => {
       cancelled = true
     }
-  }, [project.id])
+  }, [project.id, repoRel])
 
   const submit = async () => {
     if (!selected) return
     setSubmitting(true)
     setError(null)
     try {
-      await window.api.github.dispatchWorkflow(project.id, selected, ref)
+      await window.api.github.dispatchWorkflow(project.id, selected, ref, undefined, repoRel)
       onDispatched()
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))

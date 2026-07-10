@@ -1,7 +1,15 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { GitHubSettings, GitInfo, Project } from '@shared/types'
+import type {
+  GitFileStatusMap,
+  GitHubSettings,
+  GitInfo,
+  Project,
+  RepoRef,
+} from '@shared/types'
+import { sliceStatusForRepo } from '@renderer/lib/repo-status'
 import { GitHubAuth } from './github-auth'
 import { PrSection } from './pr-section'
+import { RepoSection } from './repo-section'
 import { RunsSection } from './runs-section'
 
 interface Props {
@@ -10,49 +18,76 @@ interface Props {
 
 export function GitPanel({ project }: Props) {
   const [settings, setSettings] = useState<GitHubSettings | null>(null)
-  const [gitInfo, setGitInfo] = useState<GitInfo | null>(null)
-  const [pushing, setPushing] = useState(false)
-  const [pushResult, setPushResult] = useState<string | null>(null)
+  const [repos, setRepos] = useState<RepoRef[] | null>(null)
+  const [infos, setInfos] = useState<Record<string, GitInfo>>({})
+  const [statusMap, setStatusMap] = useState<GitFileStatusMap>({})
+  const [activeRel, setActiveRel] = useState('')
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
+  const [pushingRel, setPushingRel] = useState<string | null>(null)
+  const [pushResult, setPushResult] = useState<{ rel: string; msg: string } | null>(null)
 
-  const reloadGit = useCallback(async () => {
-    setGitInfo(await window.api.git.info(project.id))
+  const reloadAll = useCallback(async () => {
+    const list = await window.api.git.repos(project.id)
+    const [infoList, status] = await Promise.all([
+      Promise.all(list.map((r) => window.api.git.info(project.id, r.rel))),
+      window.api.git.fileStatus(project.id),
+    ])
+    setRepos(list)
+    setInfos(Object.fromEntries(list.map((r, i) => [r.rel, infoList[i]!])))
+    setStatusMap(status)
+    setActiveRel((cur) => (list.some((r) => r.rel === cur) ? cur : (list[0]?.rel ?? '')))
   }, [project.id])
 
   useEffect(() => {
     let cancelled = false
-    Promise.all([
-      window.api.github.getSettings(),
-      window.api.git.info(project.id),
-    ]).then(([s, g]) => {
-      if (cancelled) return
-      setSettings(s)
-      setGitInfo(g)
+    setRepos(null)
+    setInfos({})
+    setStatusMap({})
+    setCollapsed({})
+    setPushResult(null)
+    window.api.github.getSettings().then((s) => {
+      if (!cancelled) setSettings(s)
     })
+    void reloadAll()
     return () => {
       cancelled = true
     }
-  }, [project.id])
+  }, [project.id, reloadAll])
 
-  const push = useCallback(async () => {
-    if (!gitInfo?.branch) return
-    setPushing(true)
-    setPushResult(null)
-    try {
-      const res = await window.api.git.push(project.id, gitInfo.branch)
-      setPushResult(res.output.split('\n').slice(-2).join(' '))
-      await reloadGit()
-    } finally {
-      setPushing(false)
-    }
-  }, [project.id, gitInfo?.branch, reloadGit])
+  const push = useCallback(
+    async (rel: string): Promise<void> => {
+      const info = infos[rel]
+      if (!info?.branch) return
+      setPushingRel(rel)
+      setPushResult(null)
+      try {
+        const res = await window.api.git.push(project.id, info.branch, rel)
+        setPushResult({ rel, msg: res.output.split('\n').slice(-2).join(' ') })
+        await reloadAll()
+      } finally {
+        setPushingRel(null)
+      }
+    },
+    [project.id, infos, reloadAll]
+  )
 
-  if (!settings) {
-    return (
-      <div className="px-3 py-4 text-[11px] text-foreground/40">Loading…</div>
-    )
+  const activePush = useCallback((): Promise<void> => push(activeRel), [push, activeRel])
+
+  const handleHeaderClick = useCallback((rel: string) => {
+    setActiveRel((prevActive) => {
+      setCollapsed((c) => ({
+        ...c,
+        [rel]: rel === prevActive ? !c[rel] : false,
+      }))
+      return rel
+    })
+  }, [])
+
+  if (!settings || repos === null) {
+    return <div className="px-3 py-4 text-[11px] text-foreground/40">Loading…</div>
   }
 
-  if (gitInfo && !gitInfo.isRepo) {
+  if (repos.length === 0) {
     return (
       <div className="px-3 py-4 text-[12px] text-foreground/60 space-y-2">
         <div>This folder isn’t a git repository.</div>
@@ -63,96 +98,54 @@ export function GitPanel({ project }: Props) {
     )
   }
 
+  const isMulti = repos.length > 1
+  const activeInfo: GitInfo | null = infos[activeRel] ?? null
+
   return (
     <div className="h-full overflow-y-auto">
       <GitHubAuth settings={settings} onAuthChanged={setSettings} />
-      {gitInfo && (
-        <GitStatusBar
-          gitInfo={gitInfo}
-          pushing={pushing}
-          pushResult={pushResult}
-          onPush={push}
-          onRefresh={reloadGit}
+      {repos.map((repo) => (
+        <RepoSection
+          key={repo.rel}
+          repo={repo}
+          info={infos[repo.rel]}
+          changes={sliceStatusForRepo(statusMap, repos, repo.rel)}
+          isMulti={isMulti}
+          isActive={repo.rel === activeRel}
+          isCollapsed={!!collapsed[repo.rel]}
+          pushing={pushingRel === repo.rel}
+          pushResult={pushResult?.rel === repo.rel ? pushResult.msg : null}
+          onHeaderClick={() => handleHeaderClick(repo.rel)}
+          onPush={() => void push(repo.rel)}
+          onRefresh={() => void reloadAll()}
         />
-      )}
-      {settings.hasToken && gitInfo?.githubRepo ? (
+      ))}
+      {settings.hasToken && activeInfo?.githubRepo ? (
         <>
           <PrSection
             project={project}
-            gitInfo={gitInfo}
-            pushing={pushing}
-            onRequestPush={push}
+            repoRel={activeRel}
+            gitInfo={activeInfo}
+            pushing={pushingRel === activeRel}
+            onRequestPush={activePush}
           />
-          <RunsSection project={project} gitInfo={gitInfo} />
+          <RunsSection project={project} repoRel={activeRel} gitInfo={activeInfo} />
         </>
-      ) : settings.hasToken && !gitInfo?.githubRepo ? (
+      ) : settings.hasToken && activeInfo && !activeInfo.githubRepo ? (
         <div className="px-3 py-4 text-[12px] text-foreground/55">
-          This repo has no GitHub remote on <code>origin</code>, so PRs and runs aren’t available.
+          {isMulti ? (
+            <>
+              <span className="font-medium">{repos.find((r) => r.rel === activeRel)?.name}</span>{' '}
+              has no GitHub remote on <code>origin</code>, so PRs and runs aren’t available.
+            </>
+          ) : (
+            <>
+              This repo has no GitHub remote on <code>origin</code>, so PRs and runs aren’t
+              available.
+            </>
+          )}
         </div>
       ) : null}
-    </div>
-  )
-}
-
-function GitStatusBar({
-  gitInfo,
-  pushing,
-  pushResult,
-  onPush,
-  onRefresh,
-}: {
-  gitInfo: GitInfo
-  pushing: boolean
-  pushResult: string | null
-  onPush: () => Promise<void>
-  onRefresh: () => Promise<void>
-}) {
-  return (
-    <div className="px-3 py-2 border-b border-accent/7 text-[11px] text-foreground/65 space-y-1">
-      <div className="flex items-center gap-2">
-        <span aria-hidden>⎇</span>
-        <span className="font-mono text-foreground/85 truncate">
-          {gitInfo.branch ?? '(detached)'}
-        </span>
-        {gitInfo.dirty && (
-          <span className="text-amber-300" title="Uncommitted changes">●</span>
-        )}
-        {gitInfo.hasUpstream && (gitInfo.ahead > 0 || gitInfo.behind > 0) && (
-          <span className="text-foreground/50">
-            {gitInfo.ahead > 0 && `↑${gitInfo.ahead}`}
-            {gitInfo.behind > 0 && `↓${gitInfo.behind}`}
-          </span>
-        )}
-        <span className="flex-1" />
-        <button
-          type="button"
-          onClick={() => void onRefresh()}
-          title="Refresh git status"
-          className="text-foreground/50 hover:text-foreground"
-        >
-          ↻
-        </button>
-        {gitInfo.branch && (!gitInfo.hasUpstream || gitInfo.ahead > 0) && (
-          <button
-            type="button"
-            onClick={() => void onPush()}
-            disabled={pushing}
-            className="text-[11px] px-2 py-0.5 rounded bg-foreground/10 hover:bg-foreground/20 disabled:opacity-40"
-          >
-            {pushing ? 'Pushing…' : gitInfo.hasUpstream ? 'Push' : 'Push -u'}
-          </button>
-        )}
-      </div>
-      {gitInfo.githubRepo && (
-        <div className="text-foreground/45 truncate">
-          {gitInfo.githubRepo.owner}/{gitInfo.githubRepo.repo}
-        </div>
-      )}
-      {pushResult && (
-        <div className="text-[10px] text-foreground/50 truncate" title={pushResult}>
-          {pushResult}
-        </div>
-      )}
     </div>
   )
 }
