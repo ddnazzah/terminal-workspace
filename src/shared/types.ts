@@ -24,13 +24,19 @@ export interface TerminalRecord {
   claudeSessionId?: string
   /**
    * The long-running agent command (and the cwd it ran in) that was active in
-   * this tab at last save, captured from shell integration (OSC 697). On the
-   * next launch the tab is recreated in that cwd running the command's "resume"
-   * form (see the resume map in renderer settings) so agents like `claude`,
-   * `cursor-agent`, or `aider` pick up where they left off. Unset for tabs that
-   * were idling at a prompt.
+   * this tab at last save, captured alias-expanded from shell integration
+   * (OSC 697). On the next launch the tab is recreated in that cwd running the
+   * command's "resume" form (see the resume map in renderer settings) so agents
+   * like `claude`, `cursor-agent`, or `aider` pick up where they left off.
+   * Unset for tabs that were idling at a prompt.
+   *
+   * `sessionId` is the exact Claude session discovered for a hand-typed launch
+   * (parsed from an explicit `--resume <id>` or sniffed from
+   * `~/.claude/projects/<cwd-slug>/`). Unlike {@link claudeSessionId} it is
+   * agent-scoped: it lives and dies with the capture, so exiting the agent
+   * clears it.
    */
-  agent?: { command: string; cwd: string }
+  agent?: { command: string; cwd: string; sessionId?: string }
 }
 
 export interface Project {

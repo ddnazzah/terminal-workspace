@@ -10,7 +10,14 @@ import {
 } from '@shared/types'
 import { getProject, getState, mutate, removeTerminal, upsertTerminal } from '../store/state'
 import { getDefaultShell } from '../pty/shell-integration'
-import { buildResumeCommand, isClaudeLaunch, withSessionId } from '../pty/claude-session'
+import {
+  buildResumeCommand,
+  extractPinnedSessionId,
+  isClaudeLaunch,
+  isContinueLaunch,
+  withSessionId,
+} from '@shared/claude-session'
+import { sniffSessionId } from '../pty/claude-session-watch'
 import type { PtyManager } from '../pty/manager'
 
 /** Resolve a project-relative cwd, refusing anything that escapes the project root. */
@@ -38,22 +45,29 @@ export function createTerminal(
   const shell = opts.shell ?? getDefaultShell()
   const cwd = resolveCwd(project.path, opts.cwd)
 
-  // Restore path: rebuild a persisted Claude tab, reusing its id so the
-  // recreated PTY lines up with the existing record and active-tab state.
-  if (opts.id && opts.resumeSessionId) {
+  // Restore path: any reused id rebuilds a persisted tab — resumed Claude
+  // session, relaunched agent, or plain shell alike — so the recreated PTY
+  // always lines up with the existing record, its pane, and active-tab state.
+  // The caller (restore planner) supplies the ready-to-run startup command;
+  // resumeSessionId additionally marks the session as wTerm-owned.
+  if (opts.id) {
     const existing = project.terminals.find((t) => t.id === opts.id)
+    const claudeSessionId = opts.resumeSessionId ?? existing?.claudeSessionId
     const record: TerminalRecord = {
       id: opts.id,
       name: existing?.name ?? opts.name ?? `Terminal ${project.terminals.length + 1}`,
       shell: existing?.shell ?? shell,
-      claudeSessionId: opts.resumeSessionId,
+      ...(claudeSessionId ? { claudeSessionId } : {}),
+      ...(existing?.agent ? { agent: existing.agent } : {}),
     }
     upsertTerminal(project.id, record)
     pty.create({
       id: opts.id,
       cwd,
       shell: record.shell,
-      startupCommand: buildResumeCommand(opts.startupCommand, opts.resumeSessionId),
+      startupCommand:
+        opts.startupCommand ??
+        (opts.resumeSessionId ? buildResumeCommand(undefined, opts.resumeSessionId) : undefined),
     })
     return record
   }
@@ -150,12 +164,70 @@ export function registerTerminalIpc(pty: PtyManager): void {
       for (const project of getState().projects) {
         const t = project.terminals.find((x) => x.id === id)
         if (!t) continue
-        const next = agent ?? undefined
-        if (JSON.stringify(t.agent) !== JSON.stringify(next)) {
-          upsertTerminal(project.id, { ...t, agent: next })
-        }
+        handleRunningCommand(project.id, t, agent)
         return
       }
     }
   )
+}
+
+// One sniffer per terminal: a fresh capture (or the agent ending) invalidates
+// the previous watch via its token. Claimed session files are global so two
+// same-cwd tabs never resolve to the same conversation.
+const sessionWatchTokens = new Map<TerminalId, object>()
+const claimedSessionFiles = new Set<string>()
+
+/** Apply an OSC 697 capture (or clear) to the record and manage id sniffing. */
+function handleRunningCommand(
+  projectId: ProjectId,
+  t: TerminalRecord,
+  agent: { command: string; cwd: string } | null
+): void {
+  if (!agent) {
+    sessionWatchTokens.delete(t.id)
+    if (t.agent) upsertTerminal(projectId, { ...t, agent: undefined })
+    return
+  }
+
+  // An explicit `--resume <id>` / `--session-id <id>` names the session
+  // directly; anything else gets sniffed from the cwd's session folder.
+  const pinned = isClaudeLaunch(agent.command) ? extractPinnedSessionId(agent.command) : null
+  const next = { command: agent.command, cwd: agent.cwd, ...(pinned ? { sessionId: pinned } : {}) }
+  if (JSON.stringify(t.agent) !== JSON.stringify(next)) {
+    upsertTerminal(projectId, { ...t, agent: next })
+  }
+  if (isClaudeLaunch(agent.command) && !pinned) {
+    startSessionSniffer(projectId, t.id, agent)
+  }
+}
+
+function startSessionSniffer(
+  projectId: ProjectId,
+  id: TerminalId,
+  agent: { command: string; cwd: string }
+): void {
+  const token = {}
+  sessionWatchTokens.set(id, token)
+  const currentAgent = (): TerminalRecord['agent'] =>
+    getProject(projectId)?.terminals.find((x) => x.id === id)?.agent
+  const isActive = (): boolean => {
+    if (sessionWatchTokens.get(id) !== token) return false
+    const a = currentAgent()
+    return !!a && a.command === agent.command && a.cwd === agent.cwd
+  }
+  sniffSessionId(agent.cwd, {
+    sinceMs: Date.now(),
+    mode: isContinueLaunch(agent.command) ? 'modified' : 'created',
+    isActive,
+    claimed: claimedSessionFiles,
+  })
+    .then((sessionId) => {
+      if (!sessionId || !isActive()) return
+      const t = getProject(projectId)?.terminals.find((x) => x.id === id)
+      if (!t?.agent) return
+      upsertTerminal(projectId, { ...t, agent: { ...t.agent, sessionId } })
+    })
+    .catch((err: unknown) => {
+      console.error('[claude-session-watch] sniffer failed for', id, err)
+    })
 }

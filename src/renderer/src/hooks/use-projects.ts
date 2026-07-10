@@ -1,23 +1,7 @@
 import { useCallback, useEffect } from 'react'
 import { useWorkspace } from '@renderer/state/store'
-import { useSettings, type AgentRestoreRule } from '@renderer/state/settings'
-
-/** The command to relaunch a captured agent, by matching its program basename. */
-function resumeCommandFor(command: string, rules: AgentRestoreRule[]): string | null {
-  const first = command.trim().split(/\s+/)[0] ?? ''
-  const base = first.split(/[/\\]/).pop() ?? first
-  return rules.find((r) => r.match === base)?.resume ?? null
-}
-
-/** Project-relative cwd for a captured absolute agent cwd, or undefined (root). */
-function relativeCwd(projectPath: string, cwd: string): string | undefined {
-  const root = projectPath.replace(/[/\\]+$/, '')
-  if (!cwd || cwd === root) return undefined
-  if (cwd.startsWith(root + '/') || cwd.startsWith(root + '\\')) {
-    return cwd.slice(root.length + 1) || undefined
-  }
-  return undefined // ran outside the project root → fall back to the root
-}
+import { useSettings } from '@renderer/state/settings'
+import { planRestore } from '@renderer/lib/restore-plan'
 
 // useProjects is consumed by more than one component, so its bootstrap effect
 // runs once per consumer. Restoring Claude tabs must happen exactly once per app
@@ -44,40 +28,23 @@ export function useProjects() {
         activeTerminalByProject: snapshot.activeTerminalByProject ?? {},
       })
 
-      // Bring back Claude tabs from the previous session: each persisted tab
-      // carries the session id wTerm launched it with, so we recreate its PTY
-      // running `claude --resume <id>`. Reuse the persisted tab id so the
-      // recreated PTY lines up with the tab the snapshot just rendered. Run this
-      // at most once per launch even though multiple components mount this hook.
+      // Bring back every tab from the previous session: Claude sessions resume
+      // by exact id, captured agents relaunch their resume form, and anything
+      // else comes back as a plain shell — a rendered tab must always have a
+      // live PTY behind it (see lib/restore-plan.ts). Reuse the persisted tab
+      // ids so the recreated PTYs line up with the tabs the snapshot just
+      // rendered. Run at most once per launch even though multiple components
+      // mount this hook.
       if (claudeRestoreStarted) return
       claudeRestoreStarted = true
       const settings = useSettings.getState()
-      const startupCommand = settings.terminal.startupCommand.trim() || undefined
-      const { enabled: agentRestoreEnabled, rules } = settings.agentRestore
-      for (const project of snapshot.projects) {
-        for (const terminal of project.terminals) {
-          if (terminal.claudeSessionId) {
-            // Pinned Claude session — resume by id (existing path).
-            void window.api.terminals.create({
-              projectId: project.id,
-              id: terminal.id,
-              name: terminal.name,
-              resumeSessionId: terminal.claudeSessionId,
-              startupCommand,
-            })
-          } else if (terminal.agent && agentRestoreEnabled) {
-            // Captured agent command — relaunch its resume form in its folder.
-            const resume = resumeCommandFor(terminal.agent.command, rules)
-            if (!resume) continue
-            void window.api.terminals.create({
-              projectId: project.id,
-              id: terminal.id,
-              name: terminal.name,
-              cwd: relativeCwd(project.path, terminal.agent.cwd),
-              startupCommand: resume,
-            })
-          }
-        }
+      const plan = planRestore(snapshot.projects, {
+        startupCommand: settings.terminal.startupCommand.trim() || undefined,
+        agentRestoreEnabled: settings.agentRestore.enabled,
+        rules: settings.agentRestore.rules,
+      })
+      for (const create of plan) {
+        void window.api.terminals.create(create)
       }
     })
     return () => {

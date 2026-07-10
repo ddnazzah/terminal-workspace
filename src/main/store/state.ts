@@ -42,12 +42,12 @@ export async function loadState(): Promise<AppState> {
     const raw = await fs.readFile(statePath(), 'utf-8')
     const parsed = JSON.parse(raw) as AppState
     if (parsed?.version === 1 && Array.isArray(parsed.projects)) {
-      // Restorable tabs: a pinned Claude session (`claudeSessionId`) or a
-      // captured agent command (`agent`, from OSC 697) that can be re-launched.
-      // A plain shell can't be resumed (its program is gone), so it's dropped.
+      // Every persisted tab is restorable: Claude sessions and captured agents
+      // resume, and plain shells come back as plain shells — the workspace
+      // keeps its shape (see renderer restore planning in lib/restore-plan.ts).
       const projects = parsed.projects.map((p) => ({
         ...p,
-        terminals: (p.terminals ?? []).filter((t) => t.claudeSessionId || t.agent),
+        terminals: p.terminals ?? [],
       }))
       const survivingIds = new Set(projects.flatMap((p) => p.terminals.map((t) => t.id)))
       const activeTerminalByProject = Object.fromEntries(
@@ -127,12 +127,10 @@ function scheduleSave(): void {
 async function writeFile(): Promise<void> {
   const target = statePath()
   const tmp = `${target}.tmp`
-  // Persist restorable tabs only: a pinned Claude session (claudeSessionId) or a
-  // captured agent command (agent). Plain shells stay session-scoped and are
-  // dropped. The Home workspace is synthesized fresh each launch, never persisted.
-  const projects = cache.projects
-    .filter((p) => !p.isDefault)
-    .map((p) => ({ ...p, terminals: p.terminals.filter((t) => t.claudeSessionId || t.agent) }))
+  // Persist every project tab — Claude sessions and agents resume, plain shells
+  // come back as plain shells, so the workspace keeps its shape across
+  // restarts. The Home workspace is synthesized fresh each launch, never persisted.
+  const projects = cache.projects.filter((p) => !p.isDefault)
   const survivingIds = new Set(projects.flatMap((p) => p.terminals.map((t) => t.id)))
   const activeTerminalByProject = Object.fromEntries(
     Object.entries(cache.activeTerminalByProject ?? {}).filter(
