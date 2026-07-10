@@ -34,7 +34,11 @@ export function TerminalSidebarItem({
   const [draft, setDraft] = useState(terminal.name)
   const [dragOver, setDragOver] = useState(false)
 
-  useEffect(() => setDraft(terminal.name), [terminal.name])
+  // Sync the draft to external renames, but never while the user is typing —
+  // agent auto-renames land mid-edit and must not wipe the draft.
+  useEffect(() => {
+    if (!editing) setDraft(terminal.name)
+  }, [terminal.name, editing])
 
   const displayName = autoTitle && autoTitle.length > 0 ? autoTitle : terminal.name
 
