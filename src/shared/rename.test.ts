@@ -35,6 +35,27 @@ describe('applyRename', () => {
     expect(next.nameSource).toBe('auto')
   })
 
+  it('auto rename never overwrites a user-owned name', () => {
+    const original = record({ name: 'Mine', nameSource: 'user' })
+    const next = applyRename(original, 'Task title', 'auto')
+
+    expect(next).toBe(original)
+    expect(next.name).toBe('Mine')
+  })
+
+  it('identical auto rename is a same-reference no-op', () => {
+    const original = record({ name: 'Kept', nameSource: 'auto' })
+
+    expect(applyRename(original, 'Kept', 'auto')).toBe(original)
+  })
+
+  it('same-name user rename on an unowned terminal still claims ownership', () => {
+    const next = applyRename(record({ name: 'Terminal 1' }), 'Terminal 1', 'user')
+
+    expect(next.name).toBe('Terminal 1')
+    expect(next.nameSource).toBe('user')
+  })
+
   it('empty auto rename is a no-op', () => {
     const original = record({ name: 'Kept', nameSource: 'auto' })
 

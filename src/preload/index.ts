@@ -29,6 +29,7 @@ import {
   type WorkflowRunSummary,
   type WorkflowSummary,
 } from '@shared/types'
+import type { NameSource } from '@shared/rename'
 
 const api = {
   projects: {
@@ -63,7 +64,7 @@ const api = {
       projectId: string,
       id: string,
       name: string,
-      source: 'auto' | 'user' = 'user'
+      source: NameSource = 'user'
     ): Promise<void> => ipcRenderer.invoke(IPC.terminals.rename, projectId, id, name, source),
     removeRecord: (projectId: string, id: string): void => {
       ipcRenderer.send('terminals:remove-record', projectId, id)

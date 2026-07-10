@@ -137,8 +137,10 @@ export function registerTerminalIpc(pty: PtyManager): void {
 
   ipcMain.handle(
     IPC.terminals.rename,
-    (_e, projectId: string, id: string, name: string, source?: NameSource): void => {
-      renameTerminal(projectId, id, name, source ?? 'user')
+    (_e, projectId: string, id: string, name: unknown, source?: unknown): void => {
+      // IPC args arrive untyped; a non-string name would throw inside trim().
+      if (typeof name !== 'string') return
+      renameTerminal(projectId, id, name, source === 'auto' ? 'auto' : 'user')
     }
   )
 
