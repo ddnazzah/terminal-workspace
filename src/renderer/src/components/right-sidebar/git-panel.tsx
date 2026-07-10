@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { GitHubSettings, GitInfo, Project } from '@shared/types'
-import { GitHubAuth } from './github-auth'
+import type { GitInfo, Project } from '@shared/types'
+import { useGithub } from '@renderer/state/github'
 import { PrSection } from './pr-section'
 import { RunsSection } from './runs-section'
 
@@ -9,7 +9,7 @@ interface Props {
 }
 
 export function GitPanel({ project }: Props) {
-  const [settings, setSettings] = useState<GitHubSettings | null>(null)
+  const settings = useGithub((s) => s.settings)
   const [gitInfo, setGitInfo] = useState<GitInfo | null>(null)
   const [pushing, setPushing] = useState(false)
   const [pushResult, setPushResult] = useState<string | null>(null)
@@ -20,13 +20,8 @@ export function GitPanel({ project }: Props) {
 
   useEffect(() => {
     let cancelled = false
-    Promise.all([
-      window.api.github.getSettings(),
-      window.api.git.info(project.id),
-    ]).then(([s, g]) => {
-      if (cancelled) return
-      setSettings(s)
-      setGitInfo(g)
+    window.api.git.info(project.id).then((g) => {
+      if (!cancelled) setGitInfo(g)
     })
     return () => {
       cancelled = true
@@ -65,7 +60,11 @@ export function GitPanel({ project }: Props) {
 
   return (
     <div className="h-full overflow-y-auto">
-      <GitHubAuth settings={settings} onAuthChanged={setSettings} />
+      {!settings.hasToken && (
+        <div className="px-3 py-2 border-b border-accent/7 text-[12px] text-foreground/55">
+          Sign in from the profile menu (top right) to see PRs and CI runs.
+        </div>
+      )}
       {gitInfo && (
         <GitStatusBar
           gitInfo={gitInfo}
