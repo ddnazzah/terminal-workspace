@@ -5,18 +5,24 @@ import { getFileStatus, getGitInfo } from './local'
 
 /**
  * Merge per-repo status maps into one project-root-relative map.
- * Child repo paths get prefixed with their rel; the root repo's entries for
- * nested repo directories (git lists a nested repo as one dir entry) are dropped.
+ * Child repo paths get prefixed with their rel. A child repo owns its
+ * subtree — root-repo entries at or under a child rel are dropped, whether
+ * git lists the nested repo as one dir entry ("frontend/") or as individual
+ * file paths still tracked by the parent ("frontend/app.tsx").
  */
 export function mergeStatusMaps(
   entries: ReadonlyArray<{ rel: string; map: GitFileStatusMap }>
 ): GitFileStatusMap {
   const childRels = new Set(entries.map((e) => e.rel).filter((rel) => rel !== ''))
+  const childPrefixes = [...childRels].map((rel) => `${rel}/`)
+  const isOwnedByChild = (path: string): boolean =>
+    childRels.has(path.replace(/\/$/, '')) ||
+    childPrefixes.some((prefix) => path.startsWith(prefix))
   const out: GitFileStatusMap = {}
   for (const { rel, map } of entries) {
     for (const [path, status] of Object.entries(map)) {
       if (rel === '') {
-        if (childRels.has(path.replace(/\/$/, ''))) continue
+        if (isOwnedByChild(path)) continue
         out[path] = status
       } else {
         out[`${rel}/${path}`] = status
