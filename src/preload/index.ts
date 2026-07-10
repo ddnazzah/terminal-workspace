@@ -18,6 +18,7 @@ import {
   type ProjectId,
   type PullRequestDetail,
   type PullRequestSummary,
+  type RepoRef,
   type TerminalDataPayload,
   type TerminalExitPayload,
   type SessionActivityPayload,
@@ -168,10 +169,16 @@ const api = {
     pathForFile: (file: File): string => webUtils.getPathForFile(file),
   },
   git: {
-    info: (projectId: ProjectId): Promise<GitInfo> =>
-      ipcRenderer.invoke(IPC.git.info, projectId),
-    push: (projectId: ProjectId, branch: string): Promise<{ ok: boolean; output: string }> =>
-      ipcRenderer.invoke(IPC.git.push, projectId, branch),
+    repos: (projectId: ProjectId): Promise<RepoRef[]> =>
+      ipcRenderer.invoke(IPC.git.repos, projectId),
+    info: (projectId: ProjectId, repoRel = ''): Promise<GitInfo> =>
+      ipcRenderer.invoke(IPC.git.info, projectId, repoRel),
+    push: (
+      projectId: ProjectId,
+      branch: string,
+      repoRel = ''
+    ): Promise<{ ok: boolean; output: string }> =>
+      ipcRenderer.invoke(IPC.git.push, projectId, branch, repoRel),
     fileStatus: (projectId: ProjectId): Promise<GitFileStatusMap> =>
       ipcRenderer.invoke(IPC.git.fileStatus, projectId),
   },
@@ -187,46 +194,60 @@ const api = {
       ipcRenderer.invoke(IPC.github.devicePoll, deviceCode),
     listPullRequests: (
       projectId: ProjectId,
-      state: 'open' | 'closed' | 'all' = 'open'
+      state: 'open' | 'closed' | 'all' = 'open',
+      repoRel = ''
     ): Promise<PullRequestSummary[]> =>
-      ipcRenderer.invoke(IPC.github.listPullRequests, projectId, state),
-    getPullRequest: (projectId: ProjectId, number: number): Promise<PullRequestDetail | null> =>
-      ipcRenderer.invoke(IPC.github.getPullRequest, projectId, number),
+      ipcRenderer.invoke(IPC.github.listPullRequests, projectId, state, repoRel),
+    getPullRequest: (
+      projectId: ProjectId,
+      number: number,
+      repoRel = ''
+    ): Promise<PullRequestDetail | null> =>
+      ipcRenderer.invoke(IPC.github.getPullRequest, projectId, number, repoRel),
     createPullRequest: (input: CreatePullRequestInput): Promise<PullRequestSummary> =>
       ipcRenderer.invoke(IPC.github.createPullRequest, input),
     mergePullRequest: (
       projectId: ProjectId,
       number: number,
-      method: 'merge' | 'squash' | 'rebase'
+      method: 'merge' | 'squash' | 'rebase' = 'squash',
+      repoRel = ''
     ): Promise<{ ok: boolean }> =>
-      ipcRenderer.invoke(IPC.github.mergePullRequest, projectId, number, method),
+      ipcRenderer.invoke(IPC.github.mergePullRequest, projectId, number, method, repoRel),
     commentPullRequest: (
       projectId: ProjectId,
       number: number,
-      body: string
+      body: string,
+      repoRel = ''
     ): Promise<{ ok: boolean }> =>
-      ipcRenderer.invoke(IPC.github.commentPullRequest, projectId, number, body),
-    listWorkflows: (projectId: ProjectId): Promise<WorkflowSummary[]> =>
-      ipcRenderer.invoke(IPC.github.listWorkflows, projectId),
+      ipcRenderer.invoke(IPC.github.commentPullRequest, projectId, number, body, repoRel),
+    listWorkflows: (projectId: ProjectId, repoRel = ''): Promise<WorkflowSummary[]> =>
+      ipcRenderer.invoke(IPC.github.listWorkflows, projectId, repoRel),
     listRuns: (
       projectId: ProjectId,
-      opts?: { branch?: string }
-    ): Promise<WorkflowRunSummary[]> => ipcRenderer.invoke(IPC.github.listRuns, projectId, opts),
-    getRun: (projectId: ProjectId, runId: number): Promise<WorkflowRunDetail | null> =>
-      ipcRenderer.invoke(IPC.github.getRun, projectId, runId),
-    rerunRun: (projectId: ProjectId, runId: number): Promise<{ ok: boolean }> =>
-      ipcRenderer.invoke(IPC.github.rerunRun, projectId, runId),
-    rerunFailed: (projectId: ProjectId, runId: number): Promise<{ ok: boolean }> =>
-      ipcRenderer.invoke(IPC.github.rerunFailed, projectId, runId),
-    cancelRun: (projectId: ProjectId, runId: number): Promise<{ ok: boolean }> =>
-      ipcRenderer.invoke(IPC.github.cancelRun, projectId, runId),
+      opts?: { branch?: string },
+      repoRel = ''
+    ): Promise<WorkflowRunSummary[]> =>
+      ipcRenderer.invoke(IPC.github.listRuns, projectId, opts, repoRel),
+    getRun: (
+      projectId: ProjectId,
+      runId: number,
+      repoRel = ''
+    ): Promise<WorkflowRunDetail | null> =>
+      ipcRenderer.invoke(IPC.github.getRun, projectId, runId, repoRel),
+    rerunRun: (projectId: ProjectId, runId: number, repoRel = ''): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke(IPC.github.rerunRun, projectId, runId, repoRel),
+    rerunFailed: (projectId: ProjectId, runId: number, repoRel = ''): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke(IPC.github.rerunFailed, projectId, runId, repoRel),
+    cancelRun: (projectId: ProjectId, runId: number, repoRel = ''): Promise<{ ok: boolean }> =>
+      ipcRenderer.invoke(IPC.github.cancelRun, projectId, runId, repoRel),
     dispatchWorkflow: (
       projectId: ProjectId,
       workflowId: number,
       ref: string,
-      inputs?: Record<string, string>
+      inputs?: Record<string, string>,
+      repoRel = ''
     ): Promise<{ ok: boolean }> =>
-      ipcRenderer.invoke(IPC.github.dispatchWorkflow, projectId, workflowId, ref, inputs),
+      ipcRenderer.invoke(IPC.github.dispatchWorkflow, projectId, workflowId, ref, inputs, repoRel),
   },
 }
 

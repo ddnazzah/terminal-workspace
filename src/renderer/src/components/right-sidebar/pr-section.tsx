@@ -4,6 +4,7 @@ import { CollapsibleSection } from './collapsible-section'
 
 interface Props {
   project: Project
+  repoRel: string
   gitInfo: GitInfo | null
   onRequestPush: () => Promise<void>
   pushing: boolean
@@ -11,7 +12,7 @@ interface Props {
 
 type Filter = 'open' | 'closed' | 'all'
 
-export function PrSection({ project, gitInfo, onRequestPush, pushing }: Props) {
+export function PrSection({ project, repoRel, gitInfo, onRequestPush, pushing }: Props) {
   const [prs, setPrs] = useState<PullRequestSummary[]>([])
   const [filter, setFilter] = useState<Filter>('open')
   const [loading, setLoading] = useState(true)
@@ -23,14 +24,14 @@ export function PrSection({ project, gitInfo, onRequestPush, pushing }: Props) {
     setLoading(true)
     setError(null)
     try {
-      const list = await window.api.github.listPullRequests(project.id, filter)
+      const list = await window.api.github.listPullRequests(project.id, filter, repoRel)
       setPrs(list)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
       setLoading(false)
     }
-  }, [project.id, filter])
+  }, [project.id, filter, repoRel])
 
   useEffect(() => {
     void reload()
@@ -40,6 +41,7 @@ export function PrSection({ project, gitInfo, onRequestPush, pushing }: Props) {
     return (
       <CreatePrForm
         project={project}
+        repoRel={repoRel}
         gitInfo={gitInfo}
         pushing={pushing}
         onRequestPush={onRequestPush}
@@ -57,6 +59,7 @@ export function PrSection({ project, gitInfo, onRequestPush, pushing }: Props) {
     return (
       <PrDetailView
         project={project}
+        repoRel={repoRel}
         number={open}
         onBack={() => {
           setOpen(null)
@@ -155,6 +158,7 @@ function PrStateDot({ pr }: { pr: PullRequestSummary }) {
 
 function CreatePrForm({
   project,
+  repoRel,
   gitInfo,
   pushing,
   onRequestPush,
@@ -162,6 +166,7 @@ function CreatePrForm({
   onCreated,
 }: {
   project: Project
+  repoRel: string
   gitInfo: GitInfo | null
   pushing: boolean
   onRequestPush: () => Promise<void>
@@ -184,6 +189,7 @@ function CreatePrForm({
     try {
       const pr = await window.api.github.createPullRequest({
         projectId: project.id,
+        repoRel,
         title: title.trim(),
         body,
         head,
@@ -285,10 +291,12 @@ function CreatePrForm({
 
 function PrDetailView({
   project,
+  repoRel,
   number,
   onBack,
 }: {
   project: Project
+  repoRel: string
   number: number
   onBack: () => void
 }) {
@@ -303,14 +311,14 @@ function PrDetailView({
     setLoading(true)
     setError(null)
     try {
-      const detail = await window.api.github.getPullRequest(project.id, number)
+      const detail = await window.api.github.getPullRequest(project.id, number, repoRel)
       setPr(detail)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
       setLoading(false)
     }
-  }, [project.id, number])
+  }, [project.id, number, repoRel])
 
   useEffect(() => {
     void load()
@@ -320,7 +328,7 @@ function PrDetailView({
     if (!comment.trim()) return
     setPosting(true)
     try {
-      await window.api.github.commentPullRequest(project.id, number, comment.trim())
+      await window.api.github.commentPullRequest(project.id, number, comment.trim(), repoRel)
       setComment('')
       await load()
     } catch (err) {
@@ -333,7 +341,7 @@ function PrDetailView({
   const merge = async (method: 'merge' | 'squash' | 'rebase') => {
     setMerging(true)
     try {
-      await window.api.github.mergePullRequest(project.id, number, method)
+      await window.api.github.mergePullRequest(project.id, number, method, repoRel)
       await load()
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))

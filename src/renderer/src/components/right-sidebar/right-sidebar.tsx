@@ -72,7 +72,13 @@ export function RightSidebar({ project }: Props) {
         </header>
 
         <div className="flex-1 min-h-0 overflow-hidden">
-          {tab === 'files' ? <FileTree project={project} /> : <GitPanel project={project} />}
+          {tab === 'files' ? (
+            <FileTree project={project} />
+          ) : (
+            // Keyed so in-flight git work (e.g. a push) from a previous project
+            // can never write its results into the next project's panel.
+            <GitPanel key={project.id} project={project} />
+          )}
         </div>
       </div>
 
