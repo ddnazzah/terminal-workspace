@@ -75,8 +75,16 @@ export function RepoSection({
                 onRefresh={onRefresh}
               />
             ) : (
-              <div className="px-3 py-2 text-[11px] text-red-400/80">
-                git is unavailable for this repo.
+              <div className="px-3 py-2 text-[11px] text-red-400/80 flex items-center gap-2">
+                <span className="flex-1">Couldn’t read git info for this repo.</span>
+                <button
+                  type="button"
+                  onClick={onRefresh}
+                  title="Refresh git status"
+                  className="text-foreground/50 hover:text-foreground"
+                >
+                  ↻
+                </button>
               </div>
             )
           ) : (
