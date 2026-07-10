@@ -96,4 +96,11 @@ describe('fetchAuthenticatedUser', () => {
 
     expect(await fetchAuthenticatedUser('tok')).toBeNull()
   })
+
+  it('returns null when the network request fails', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')))
+    const { fetchAuthenticatedUser } = await import('./auth')
+
+    expect(await fetchAuthenticatedUser('tok')).toBeNull()
+  })
 })
