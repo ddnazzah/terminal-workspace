@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { FsEntry, GitFileStatus, GitFileStatusMap, Project } from '@shared/types'
 import { createProjectTerminal, useWorkspace } from '@renderer/state/store'
 import { FileIcon } from './file-icon'
-import { statusColor } from '../../lib/git-status-color'
+import { statusColor } from '@renderer/lib/git-status-color'
 
 interface Props {
   project: Project
