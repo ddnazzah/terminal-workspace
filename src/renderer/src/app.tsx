@@ -16,6 +16,7 @@ import { useWindowZoom } from './lib/zoom'
 import { createProjectTerminal, useWorkspace } from '@renderer/state/store'
 import { useGithub } from './state/github'
 import { stripSpinner } from './lib/terminal-title'
+import { resolveAutoRename } from './lib/auto-rename'
 import { HOME_PROJECT_ID, type ActivityStatus, type Project, type TerminalRecord } from '@shared/types'
 
 export default function App() {
@@ -105,6 +106,18 @@ export default function App() {
       s.setTerminalBusy(p.id, p.status === 'busy')
       s.setTerminalAttention(p.id, p.status === 'attention')
       s.setTerminalTitle(p.id, p.title ? stripSpinner(p.title) : '')
+
+      // Keep the persistent name in sync with the agent's latest task so the
+      // tab doesn't fall back to a stale name once the agent goes idle.
+      const project = s.projects.find((proj) => proj.terminals.some((t) => t.id === p.id))
+      const terminal = project?.terminals.find((t) => t.id === p.id)
+      const nextName = terminal ? resolveAutoRename(p, terminal) : null
+      if (project && terminal && nextName) {
+        s.renameTerminalLocal(project.id, terminal.id, nextName, 'auto')
+        window.api.terminals.rename(project.id, terminal.id, nextName, 'auto').catch((err) => {
+          console.error('[terminals] auto-rename failed:', err)
+        })
+      }
 
       const prev = lastActivityStatusRef.current[p.id]
       lastActivityStatusRef.current[p.id] = p.status
