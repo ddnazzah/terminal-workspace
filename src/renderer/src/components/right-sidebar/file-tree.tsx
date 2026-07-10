@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { FsEntry, GitFileStatus, GitFileStatusMap, Project } from '@shared/types'
 import { createProjectTerminal, useWorkspace } from '@renderer/state/store'
 import { FileIcon } from './file-icon'
+import { statusColor } from '../../lib/git-status-color'
 
 interface Props {
   project: Project
@@ -753,22 +754,6 @@ function flattenVisible(
   }
   walk(roots)
   return out
-}
-
-function statusColor(s?: GitFileStatus): string | undefined {
-  switch (s) {
-    case 'modified':
-      return 'var(--git-modified)'
-    case 'added':
-    case 'untracked':
-      return 'var(--git-added)'
-    case 'deleted':
-      return 'var(--git-deleted)'
-    case 'conflict':
-      return 'var(--git-conflict)'
-    default:
-      return undefined
-  }
 }
 
 /** A folder is "dirty" if any changed path sits under it. */
