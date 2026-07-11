@@ -15,7 +15,7 @@ import { useProjects } from './hooks/use-projects'
 import { useWindowZoom } from './lib/zoom'
 import { createProjectTerminal, useWorkspace } from '@renderer/state/store'
 import { useGithub } from './state/github'
-import { stripSpinner } from './lib/terminal-title'
+import { resolveDisplayTitle } from './lib/terminal-title'
 import { resolveAutoRename } from './lib/auto-rename'
 import { HOME_PROJECT_ID, type ActivityStatus, type Project, type TerminalRecord } from '@shared/types'
 
@@ -105,7 +105,7 @@ export default function App() {
       // setTerminalBusy(true) also clears attention, so set busy first.
       s.setTerminalBusy(p.id, p.status === 'busy')
       s.setTerminalAttention(p.id, p.status === 'attention')
-      s.setTerminalTitle(p.id, p.title ? stripSpinner(p.title) : '')
+      s.setTerminalTitle(p.id, resolveDisplayTitle(p))
 
       // Keep the persistent name in sync with the agent's latest task so the
       // tab doesn't fall back to a stale name once the agent goes idle.
