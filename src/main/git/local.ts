@@ -65,8 +65,16 @@ export async function getGitInfo(cwd: string): Promise<GitInfo> {
   }
 
   const branchRes = await git(['rev-parse', '--abbrev-ref', 'HEAD'], cwd)
-  if (branchRes.code !== 0) return empty
-  const branch = branchRes.stdout.trim() || null
+  let branch: string | null
+  if (branchRes.code === 0) {
+    branch = branchRes.stdout.trim() || null
+  } else {
+    // Unborn branch (fresh repo, no commits yet): HEAD exists as a symref
+    // only, so rev-parse fails but symbolic-ref still resolves the name.
+    const symRes = await git(['symbolic-ref', '--short', 'HEAD'], cwd)
+    if (symRes.code !== 0) return empty
+    branch = symRes.stdout.trim() || null
+  }
 
   const remoteRes = await git(['remote', 'get-url', 'origin'], cwd)
   const githubRepo =

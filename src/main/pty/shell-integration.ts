@@ -15,10 +15,14 @@ const ZSH_INTEGRATION = `
 # wTerm shell integration (OSC 133 working markers + OSC 697 agent capture).
 # OSC 697;Cmd reports the command line + cwd (base64) so wTerm can re-run a
 # running agent (claude, aider, ...) after a restart. base64 keeps arbitrary
-# command text safe inside the escape sequence.
+# command text safe inside the escape sequence. \$3 is the alias-EXPANDED full
+# command (an alias like cc='claude ...' must be captured expanded so restore
+# rules can match the real program); \$2 looks similar but silently TRUNCATES
+# long commands (dropping e.g. a --resume uuid), so it must not be used.
+# \$1 (as typed) is the fallback, and 1024 chars is plenty for a launch command.
 __tw_preexec() {
   print -Pn '\\e]133;C\\a'
-  printf '\\e]697;Cmd;%s;%s\\a' "\$(print -rn -- "\$1" | base64 | tr -d '\\n')" "\$(print -rn -- "\$PWD" | base64 | tr -d '\\n')"
+  printf '\\e]697;Cmd;%s;%s\\a' "\$(print -rn -- "\${\${3:-\$1}[1,1024]}" | base64 | tr -d '\\n')" "\$(print -rn -- "\$PWD" | base64 | tr -d '\\n')"
 }
 __tw_precmd()  { print -Pn "\\e]133;D;\${?}\\a" }
 autoload -Uz add-zsh-hook 2>/dev/null

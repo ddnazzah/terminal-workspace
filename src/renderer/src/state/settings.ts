@@ -48,13 +48,8 @@ export const MOBILE_DEFAULTS: MobileSettings = {
   keepAwake: false,
 }
 
-/** A rule mapping an agent command to how it should be relaunched on restart. */
-export interface AgentRestoreRule {
-  /** matched against the basename of the running command's first token */
-  match: string
-  /** the command run on restart to resume that agent in its folder */
-  resume: string
-}
+export type { AgentRestoreRule } from '@renderer/lib/restore-plan'
+import type { AgentRestoreRule } from '@renderer/lib/restore-plan'
 
 export interface AgentRestoreSettings {
   /** Re-open agent terminals (claude, aider, ...) on restart, resumed. */
