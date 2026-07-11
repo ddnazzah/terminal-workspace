@@ -1,12 +1,5 @@
 import type { SessionActivityPayload, TerminalRecord } from '@shared/types'
-import { stripSpinner } from './terminal-title'
-
-// Mirrors the "title indicates active work" signal in the main-process
-// ActivityMachine: busy agent task titles always start with the ✳ marker or a
-// braille spinner frame. Required here too because agent mode is sticky in the
-// machine — if an agent dies while busy, later plain shell titles still arrive
-// flagged isAgent/busy and must not become terminal names.
-const AGENT_WORK_PREFIX = /^[✳⠀-⣿]/
+import { AGENT_WORK_PREFIX, stripSpinner } from './terminal-title'
 
 /**
  * Decide whether an activity payload should update the terminal's persistent
