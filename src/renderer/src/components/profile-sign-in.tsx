@@ -1,15 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import type { DeviceFlowStart, GitHubSettings } from '@shared/types'
+import { useGithub } from '@renderer/state/github'
 
 interface Props {
   settings: GitHubSettings
-  onAuthChanged: (next: GitHubSettings) => void
 }
 
-export function GitHubAuth({ settings, onAuthChanged }: Props) {
-  const [mode, setMode] = useState<'choose' | 'pat' | 'device' | 'configure-client'>(
-    settings.clientId ? 'choose' : 'choose'
-  )
+export function ProfileSignIn({ settings }: Props) {
+  const refresh = useGithub((s) => s.refresh)
+  const [mode, setMode] = useState<'choose' | 'pat' | 'device' | 'configure-client'>('choose')
   const [patValue, setPatValue] = useState('')
   const [clientIdValue, setClientIdValue] = useState(settings.clientId ?? '')
   const [device, setDevice] = useState<DeviceFlowStart | null>(null)
@@ -17,14 +16,19 @@ export function GitHubAuth({ settings, onAuthChanged }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const pollTimer = useRef<number | null>(null)
+  // Bumped on cancel/unmount so an in-flight devicePoll can't apply state or
+  // reschedule after the loop it belongs to was abandoned.
+  const pollGeneration = useRef(0)
 
   useEffect(() => {
     return () => {
+      pollGeneration.current += 1
       if (pollTimer.current) window.clearTimeout(pollTimer.current)
     }
   }, [])
 
   const cancelDevice = () => {
+    pollGeneration.current += 1
     if (pollTimer.current) window.clearTimeout(pollTimer.current)
     pollTimer.current = null
     setDevice(null)
@@ -48,13 +52,15 @@ export function GitHubAuth({ settings, onAuthChanged }: Props) {
   }
 
   const poll = (deviceCode: string, intervalMs: number): void => {
+    const gen = pollGeneration.current
     pollTimer.current = window.setTimeout(async () => {
+      if (pollGeneration.current !== gen) return
       try {
         const result = await window.api.github.devicePoll(deviceCode)
+        if (pollGeneration.current !== gen) return
         if (result.status === 'authorized') {
           setPollStatus(`Signed in as ${result.login}`)
-          const next = await window.api.github.getSettings()
-          onAuthChanged(next)
+          await refresh()
           return
         }
         if (result.status === 'pending') {
@@ -71,6 +77,7 @@ export function GitHubAuth({ settings, onAuthChanged }: Props) {
           setError(result.description ?? result.error)
         }
       } catch (err) {
+        if (pollGeneration.current !== gen) return
         setError(err instanceof Error ? err.message : String(err))
       }
     }, intervalMs)
@@ -80,10 +87,10 @@ export function GitHubAuth({ settings, onAuthChanged }: Props) {
     setError(null)
     setBusy(true)
     try {
-      const next = await window.api.github.setToken(patValue)
+      await window.api.github.setToken(patValue)
       setBusy(false)
       setPatValue('')
-      onAuthChanged(next)
+      await refresh()
     } catch (err) {
       setBusy(false)
       setError(err instanceof Error ? err.message : String(err))
@@ -94,9 +101,9 @@ export function GitHubAuth({ settings, onAuthChanged }: Props) {
     setError(null)
     setBusy(true)
     try {
-      const next = await window.api.github.setClientId(clientIdValue.trim() || null)
+      await window.api.github.setClientId(clientIdValue.trim() || null)
       setBusy(false)
-      onAuthChanged(next)
+      await refresh()
       setMode('choose')
     } catch (err) {
       setBusy(false)
@@ -104,32 +111,8 @@ export function GitHubAuth({ settings, onAuthChanged }: Props) {
     }
   }
 
-  if (settings.hasToken) {
-    return (
-      <div className="px-3 py-2 flex items-center gap-2 border-b border-accent/7">
-        <span className="inline-block w-2 h-2 rounded-full bg-emerald-400 flex-shrink-0" aria-hidden />
-        <span className="text-[12px] text-foreground/80 truncate flex-1">
-          {settings.login ?? 'authenticated'}
-          <span className="text-foreground/40 ml-1">
-            ({settings.source === 'device' ? 'OAuth' : 'PAT'})
-          </span>
-        </span>
-        <button
-          type="button"
-          onClick={async () => {
-            const next = await window.api.github.signOut()
-            onAuthChanged(next)
-          }}
-          className="text-[11px] text-foreground/55 hover:text-foreground"
-        >
-          Sign out
-        </button>
-      </div>
-    )
-  }
-
   return (
-    <div className="p-3 border-b border-accent/7 space-y-3">
+    <div className="p-3 space-y-3">
       <div className="text-[12px] text-foreground/70">
         Sign in to GitHub to see PRs and CI runs.
       </div>

@@ -8,6 +8,7 @@ import {
   type TerminalId,
   type TerminalRecord,
 } from '@shared/types'
+import { applyRename, type NameSource } from '@shared/rename'
 import { getProject, getState, mutate, removeTerminal, upsertTerminal } from '../store/state'
 import { getDefaultShell } from '../pty/shell-integration'
 import {
@@ -59,6 +60,7 @@ export function createTerminal(
       shell: existing?.shell ?? shell,
       ...(claudeSessionId ? { claudeSessionId } : {}),
       ...(existing?.agent ? { agent: existing.agent } : {}),
+      ...(existing?.nameSource ? { nameSource: existing.nameSource } : {}),
     }
     upsertTerminal(project.id, record)
     pty.create({
@@ -99,10 +101,17 @@ export function createTerminal(
   return record
 }
 
-export function renameTerminal(projectId: ProjectId, id: TerminalId, name: string): void {
+export function renameTerminal(
+  projectId: ProjectId,
+  id: TerminalId,
+  name: string,
+  source: NameSource = 'user'
+): void {
   const project = getProject(projectId)
   const t = project?.terminals.find((x) => x.id === id)
-  if (project && t) upsertTerminal(project.id, { ...t, name })
+  if (!project || !t) return
+  const next = applyRename(t, name, source)
+  if (next !== t) upsertTerminal(project.id, next)
 }
 
 export function removeTerminalRecord(pty: PtyManager, projectId: ProjectId, id: TerminalId): void {
@@ -142,8 +151,10 @@ export function registerTerminalIpc(pty: PtyManager): void {
 
   ipcMain.handle(
     IPC.terminals.rename,
-    (_e, projectId: string, id: string, name: string): void => {
-      renameTerminal(projectId, id, name)
+    (_e, projectId: string, id: string, name: unknown, source?: unknown): void => {
+      // IPC args arrive untyped; a non-string name would throw inside trim().
+      if (typeof name !== 'string') return
+      renameTerminal(projectId, id, name, source === 'auto' ? 'auto' : 'user')
     }
   )
 

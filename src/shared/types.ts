@@ -37,6 +37,12 @@ export interface TerminalRecord {
    * clears it.
    */
   agent?: { command: string; cwd: string; sessionId?: string }
+  /**
+   * Who owns the current name. 'user' = set by an explicit manual rename and
+   * protected from auto-naming. 'auto' (or unset, for records persisted before
+   * this field existed) = eligible to be overwritten by the agent's task title.
+   */
+  nameSource?: 'auto' | 'user'
 }
 
 export interface Project {
@@ -100,6 +106,8 @@ export type SessionActivityPayload = {
   status: ActivityStatus
   title: string | null
   exitCode: number | null
+  /** True when the title comes from an agent (Claude Code etc.), not a plain shell. */
+  isAgent: boolean
 }
 /** Sent by the renderer so main can suppress notifications for the on-screen session. */
 export type SetFocusedPayload = { id: TerminalId | null; windowFocused: boolean }
@@ -329,6 +337,8 @@ export interface GitHubSettings {
   login: string | null
   /** how the token was obtained */
   source: 'pat' | 'device' | null
+  /** avatar of the authenticated user; null for pre-existing sessions that signed in before it was captured */
+  avatarUrl: string | null
 }
 
 export interface DeviceFlowStart {

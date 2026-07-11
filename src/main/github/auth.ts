@@ -6,13 +6,14 @@ export interface StoredAuth {
   token: string
   login: string | null
   source: 'pat' | 'device'
+  avatarUrl?: string | null
 }
 
 interface DiskBlob {
   version: 1
   /** OAuth App client id used for device flow (plaintext — not a secret) */
   clientId: string | null
-  /** base64 of safeStorage-encrypted JSON { token, login, source } */
+  /** base64 of safeStorage-encrypted JSON { token, login, source, avatarUrl } */
   authEnc: string | null
 }
 
@@ -183,15 +184,26 @@ export async function devicePollOnce(
   }
 }
 
-export async function fetchAuthenticatedLogin(token: string): Promise<string | null> {
-  const res = await fetch('https://api.github.com/user', {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: 'application/vnd.github+json',
-      'X-GitHub-Api-Version': '2022-11-28',
-    },
-  })
-  if (!res.ok) return null
-  const body = (await res.json()) as { login?: string }
-  return body.login ?? null
+export interface AuthenticatedUser {
+  login: string
+  avatarUrl: string | null
+}
+
+export async function fetchAuthenticatedUser(token: string): Promise<AuthenticatedUser | null> {
+  try {
+    const res = await fetch('https://api.github.com/user', {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28',
+      },
+    })
+    if (!res.ok) return null
+    const body = (await res.json()) as { login?: string; avatar_url?: string | null }
+    if (!body.login) return null
+    return { login: body.login, avatarUrl: body.avatar_url ?? null }
+  } catch (err) {
+    console.error('[github] GET /user failed:', err)
+    return null
+  }
 }

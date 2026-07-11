@@ -1,13 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type {
-  GitFileStatusMap,
-  GitHubSettings,
-  GitInfo,
-  Project,
-  RepoRef,
-} from '@shared/types'
+import type { GitFileStatusMap, GitInfo, Project, RepoRef } from '@shared/types'
 import { sliceStatusForRepo } from '@renderer/lib/repo-status'
-import { GitHubAuth } from './github-auth'
+import { useGithub } from '@renderer/state/github'
 import { PrSection } from './pr-section'
 import { RepoSection } from './repo-section'
 import { RunsSection } from './runs-section'
@@ -17,7 +11,7 @@ interface Props {
 }
 
 export function GitPanel({ project }: Props) {
-  const [settings, setSettings] = useState<GitHubSettings | null>(null)
+  const settings = useGithub((s) => s.settings)
   const [repos, setRepos] = useState<RepoRef[] | null>(null)
   const [infos, setInfos] = useState<Record<string, GitInfo>>({})
   const [statusMap, setStatusMap] = useState<GitFileStatusMap>({})
@@ -43,20 +37,13 @@ export function GitPanel({ project }: Props) {
   }, [project.id])
 
   useEffect(() => {
-    let cancelled = false
     epochRef.current += 1
     setRepos(null)
     setInfos({})
     setStatusMap({})
     setCollapsed({})
     setPushResult(null)
-    window.api.github.getSettings().then((s) => {
-      if (!cancelled) setSettings(s)
-    })
     void reloadAll()
-    return () => {
-      cancelled = true
-    }
   }, [project.id, reloadAll])
 
   const push = useCallback(
@@ -106,7 +93,11 @@ export function GitPanel({ project }: Props) {
 
   return (
     <div className="h-full overflow-y-auto">
-      <GitHubAuth settings={settings} onAuthChanged={setSettings} />
+      {!settings.hasToken && (
+        <div className="px-3 py-2 border-b border-accent/7 text-[12px] text-foreground/55">
+          Sign in from the profile menu (top right) to see PRs and CI runs.
+        </div>
+      )}
       {repos.map((repo) => (
         <RepoSection
           key={repo.rel}

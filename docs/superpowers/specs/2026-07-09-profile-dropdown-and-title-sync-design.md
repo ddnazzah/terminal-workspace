@@ -61,12 +61,12 @@ Decided during brainstorming:
 
 ### Feature 1 — Profile dropdown
 
-**Shared GitHub state.** New `github` slice in the existing renderer Zustand store
-(`state/store.ts`): `{ githubSettings: GitHubSettings | null, refreshGithub(): Promise<void> }`.
-`refreshGithub` wraps `window.api.github.getSettings()`. All auth mutations (device poll
-success, PAT save, client-id save, sign out) call it. `TopBar`/`ProfileMenu` and `GitPanel`
-consume the slice; `GitPanel` drops its local `settings` state and `TopBar` drops its private
-fetch.
+**Shared GitHub state.** New dedicated Zustand store `useGithub` (`state/github.ts`,
+following the existing `useSettings` pattern): `{ settings: GitHubSettings | null,
+refresh(): Promise<void> }`. `refresh` wraps `window.api.github.getSettings()`. All auth
+mutations (device poll success, PAT save, client-id save, sign out) call it. `TopBar`/
+`ProfileMenu` and `GitPanel` consume the store; `GitPanel` drops its local `settings` state
+and `TopBar` drops its private fetch.
 
 **`ProfileMenu` component** (`src/renderer/src/components/profile-menu.tsx`) replaces the
 avatar button in `TopBar`. Clicking toggles a right-aligned popover anchored under the button;
@@ -141,10 +141,10 @@ Vitest is already set up (`pnpm test`).
   empty title, spinner stripping); `nameSource` transitions in the rename path (user rename →
   `'user'`, empty rename → `'auto'`); the main-side `isAgent` derivation on
   `SessionActivityPayload`; the `settings()` IPC mapper including `avatarUrl`.
-- **Component (if renderer component testing exists in the repo):** ProfileMenu open/close,
-  signed-in vs signed-out contents, sign-out triggering `refreshGithub`. If no component test
-  infra exists, the popover logic (open/close/outside-click) is extracted into a testable
-  hook and covered by unit tests instead.
+- **Components:** the repo's vitest setup is node-environment, `*.test.ts` only — no DOM, so
+  ProfileMenu/ProfileSignIn get no component tests. All branching logic (rename decisions,
+  settings mapping, store refresh) lives in tested pure modules; the components are covered
+  by typecheck and a scripted manual verification pass.
 
 ## Out of scope
 

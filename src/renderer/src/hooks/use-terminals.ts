@@ -1,6 +1,7 @@
 import { useCallback } from 'react'
 import { createProjectTerminal, useWorkspace } from '@renderer/state/store'
 import type { Project } from '@shared/types'
+import type { NameSource } from '@shared/rename'
 
 export function useTerminals(project: Project | null) {
   const removeTerminalLocal = useWorkspace((s) => s.removeTerminalLocal)
@@ -26,10 +27,10 @@ export function useTerminals(project: Project | null) {
   )
 
   const rename = useCallback(
-    async (terminalId: string, name: string) => {
+    async (terminalId: string, name: string, source: NameSource = 'user') => {
       if (!project) return
-      renameTerminalLocal(project.id, terminalId, name)
-      await window.api.terminals.rename(project.id, terminalId, name)
+      renameTerminalLocal(project.id, terminalId, name, source)
+      await window.api.terminals.rename(project.id, terminalId, name, source)
     },
     [project, renameTerminalLocal]
   )

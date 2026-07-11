@@ -346,6 +346,9 @@ export class MobileBridge {
         applyFromBridge(() => removeTerminalRecord(this.pty, msg.projectId, msg.id))
         break
       case 'rename':
+        // Network-facing: the cast after JSON.parse guarantees nothing, and a
+        // non-string name would throw inside the rename helper.
+        if (typeof msg.name !== 'string') break
         applyFromBridge(() => renameTerminal(msg.projectId, msg.id, msg.name))
         break
       case 'setActive':

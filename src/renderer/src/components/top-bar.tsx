@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
 import { isMac, isWindows } from '@renderer/lib/platform'
+import { ProfileMenu } from './profile-menu'
 
 interface Props {
   /** Current session label shown in the center input (project — terminal). */
@@ -27,15 +27,6 @@ export function TopBar({
   onToggleTerminal,
   onOpenSettings,
 }: Props) {
-  const [login, setLogin] = useState<string | null>(null)
-
-  useEffect(() => {
-    window.api.github
-      .getSettings()
-      .then((s) => setLogin(s.login))
-      .catch(() => setLogin(null))
-  }, [])
-
   return (
     <header
       className={`app-titlebar relative flex items-center h-11 pr-3 gap-2 flex-shrink-0 ${
@@ -105,27 +96,7 @@ export function TopBar({
           </svg>
         </button>
 
-        <button
-          type="button"
-          onClick={onOpenSettings}
-          aria-label={login ? `GitHub: ${login}` : 'GitHub account'}
-          title={login ? `GitHub: ${login}` : 'Connect GitHub'}
-          className="flex items-center justify-center w-7 h-7 rounded-full overflow-hidden text-foreground/55 hover:text-foreground hover:bg-foreground/10 transition-colors"
-        >
-          {login ? (
-            <img
-              src={`https://github.com/${login}.png?size=44`}
-              alt={login}
-              className="w-[22px] h-[22px] rounded-full object-cover"
-              referrerPolicy="no-referrer"
-            />
-          ) : (
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <circle cx="12" cy="8" r="4" />
-              <path d="M4 21a8 8 0 0 1 16 0" />
-            </svg>
-          )}
-        </button>
+        <ProfileMenu onOpenSettings={onOpenSettings} />
       </div>
     </header>
   )
