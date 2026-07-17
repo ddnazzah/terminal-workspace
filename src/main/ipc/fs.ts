@@ -3,8 +3,9 @@ import { spawn } from 'node:child_process'
 import { promises as fs } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join, relative, resolve, sep } from 'node:path'
-import { IPC, MAX_TEXT_FILE_BYTES, type FsEntry, type ProjectId } from '@shared/types'
+import { IPC, MAX_TEXT_FILE_BYTES, type FsEntry, type ProjectId, type WalkResult } from '@shared/types'
 import { getProject } from '../store/state'
+import { walkProjectFiles } from './walk-project'
 
 // Hard cap on a single pasted/dropped blob — pastes from screenshot tools land
 // here, and we never want a runaway clipboard payload to fill the disk.
@@ -268,6 +269,12 @@ export function registerFsIpc(): void {
       shell.showItemInFolder(abs)
     }
   )
+
+  ipcMain.handle(IPC.fs.walk, async (_e, projectId: ProjectId): Promise<WalkResult> => {
+    const project = getProject(projectId)
+    if (!project) return { files: [], truncated: false }
+    return walkProjectFiles(project.path)
+  })
 
   ipcMain.handle(
     IPC.fs.saveTempPaste,
