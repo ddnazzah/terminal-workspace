@@ -49,3 +49,49 @@ export function fuzzyMatch(query: string, target: string): FuzzyResult | null {
   score -= matchedIndices[0]! * EARLINESS_WEIGHT
   return { score, matchedIndices }
 }
+
+export interface RankedFile {
+  path: string
+  score: number
+  /** Matched indices relative to the basename (empty for path-only matches). */
+  matchedIndices: number[]
+}
+
+const MAX_RESULTS = 50
+/** Basename matches outrank any path-only match. */
+const BASENAME_BONUS = 100
+
+function basename(path: string): string {
+  const i = path.lastIndexOf('/')
+  return i === -1 ? path : path.slice(i + 1)
+}
+
+/**
+ * Rank files against a query. Prefers basename matches (with highlight indices);
+ * falls back to a full-path match with no highlight. Empty query returns the
+ * first MAX_RESULTS paths unranked.
+ */
+export function rankFiles(query: string, files: string[]): RankedFile[] {
+  const q = query.trim()
+  if (q === '') {
+    return files.slice(0, MAX_RESULTS).map((path) => ({ path, score: 0, matchedIndices: [] }))
+  }
+
+  const ranked: RankedFile[] = []
+  for (const path of files) {
+    const baseMatch = fuzzyMatch(q, basename(path))
+    if (baseMatch) {
+      ranked.push({ path, score: baseMatch.score + BASENAME_BONUS, matchedIndices: baseMatch.matchedIndices })
+      continue
+    }
+    const fullMatch = fuzzyMatch(q, path)
+    if (fullMatch) {
+      ranked.push({ path, score: fullMatch.score, matchedIndices: [] })
+    }
+  }
+
+  ranked.sort(
+    (a, b) => b.score - a.score || a.path.length - b.path.length || a.path.localeCompare(b.path)
+  )
+  return ranked.slice(0, MAX_RESULTS)
+}

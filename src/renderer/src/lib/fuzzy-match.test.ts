@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { fuzzyMatch } from './fuzzy-match'
+import { fuzzyMatch, rankFiles } from './fuzzy-match'
 
 describe('fuzzyMatch', () => {
   test('returns empty match for an empty query', () => {
@@ -39,5 +39,36 @@ describe('fuzzyMatch', () => {
     expect(consecutive).not.toBeNull()
     expect(scattered).not.toBeNull()
     expect(consecutive!.score).toBeGreaterThan(scattered!.score)
+  })
+})
+
+describe('rankFiles', () => {
+  test('returns the first N paths for an empty query', () => {
+    const files = ['a.ts', 'b.ts', 'c.ts']
+    const ranked = rankFiles('', files)
+    expect(ranked.map((r) => r.path)).toEqual(['a.ts', 'b.ts', 'c.ts'])
+    expect(ranked[0]!.matchedIndices).toEqual([])
+  })
+
+  test('drops files that do not match', () => {
+    const ranked = rankFiles('zzz', ['app.ts', 'main.ts'])
+    expect(ranked).toEqual([])
+  })
+
+  test('ranks a basename match above a path-only match', () => {
+    const files = ['src/quick/other.ts', 'app.ts']
+    const ranked = rankFiles('app', files)
+    expect(ranked[0]!.path).toBe('app.ts')
+  })
+
+  test('reports matched indices relative to the basename', () => {
+    const ranked = rankFiles('app', ['src/deep/app.ts'])
+    expect(ranked[0]!.matchedIndices).toEqual([0, 1, 2])
+  })
+
+  test('caps results at 50', () => {
+    const files = Array.from({ length: 100 }, (_, i) => `file${i}app.ts`)
+    const ranked = rankFiles('app', files)
+    expect(ranked.length).toBe(50)
   })
 })
