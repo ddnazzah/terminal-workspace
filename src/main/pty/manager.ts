@@ -11,6 +11,7 @@ import { getDefaultShell, prepareShellIntegration } from './shell-integration'
 import { OscParser } from './activity/osc-parser'
 import { ActivityMachine } from './activity/activity-machine'
 import type { SessionActivity } from './activity/types'
+import { resolveRelease, resolveResize, type ResizeSource } from './resize-authority'
 
 /** Notified on every session activity transition (for firing notifications). */
 export type NotifyHook = (id: TerminalId, prev: SessionActivity, next: SessionActivity) => void
@@ -35,6 +36,15 @@ interface PtyEntry {
   /** Per-session activity detection fed from the raw PTY stream. */
   parser: OscParser
   machine: ActivityMachine
+  /**
+   * Last size the desktop asked for. While a phone is the active viewer it owns
+   * the PTY size (so the running program renders for the phone), and desktop
+   * resizes are recorded here but not applied — they're restored when the phone
+   * stops viewing.
+   */
+  desktopSize: { cols: number; rows: number }
+  /** True while a connected phone is the size authority for this terminal. */
+  bridgeOwned: boolean
 }
 
 /**
@@ -48,6 +58,7 @@ export interface PtySink {
   onData?(p: TerminalDataPayload): void
   onExit?(p: TerminalExitPayload): void
   onCreate?(id: TerminalId): void
+  onActivity?(p: SessionActivityPayload): void
 }
 
 export class PtyManager {
@@ -154,6 +165,8 @@ export class PtyManager {
       injectFallback: null,
       parser: new OscParser(),
       machine: new ActivityMachine(),
+      desktopSize: { cols, rows },
+      bridgeOwned: false,
     }
     this.entries.set(opts.id, entry)
     for (const sink of this.sinks) sink.onCreate?.(opts.id)
@@ -227,6 +240,7 @@ export class PtyManager {
       exitCode: next.lastExitCode,
     }
     this.window?.webContents.send(IPC.terminals.activity, payload)
+    for (const sink of this.sinks) sink.onActivity?.(payload)
     this.notifyHook?.(id, prev, next)
   }
 
@@ -239,11 +253,37 @@ export class PtyManager {
     entry?.pty.write(data)
   }
 
-  resize(id: TerminalId, cols: number, rows: number): void {
+  /**
+   * Resize a PTY. A phone that is actively viewing a terminal becomes the size
+   * authority (`source: 'bridge'`) so the running program renders for the phone,
+   * not the desktop's wide grid. While a phone owns the size, desktop resizes
+   * are remembered (to restore later) but not applied. See {@link releaseBridgeSize}.
+   */
+  resize(id: TerminalId, cols: number, rows: number, source: ResizeSource = 'desktop'): void {
     const entry = this.entries.get(id)
     if (!entry) return
+    const { next, applied } = resolveResize(entry, cols, rows, source)
+    entry.desktopSize = next.desktopSize
+    entry.bridgeOwned = next.bridgeOwned
+    if (applied) this.applyResize(entry, applied.cols, applied.rows)
+  }
+
+  /**
+   * Hand size authority back to the desktop after the last phone stops viewing
+   * a terminal, restoring the desktop's last-known dimensions so its grid stops
+   * being pinned to the phone's width. No-op unless a phone currently owns it.
+   */
+  releaseBridgeSize(id: TerminalId): void {
+    const entry = this.entries.get(id)
+    if (!entry) return
+    const { next, applied } = resolveRelease(entry)
+    entry.bridgeOwned = next.bridgeOwned
+    if (applied) this.applyResize(entry, applied.cols, applied.rows)
+  }
+
+  private applyResize(entry: PtyEntry, cols: number, rows: number): void {
     try {
-      entry.pty.resize(Math.max(1, Math.floor(cols)), Math.max(1, Math.floor(rows)))
+      entry.pty.resize(cols, rows)
     } catch {
       // ignore — happens if pty is already gone
     }

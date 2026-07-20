@@ -35,6 +35,14 @@ export class ClientRegistry {
     return this.clients.size
   }
 
+  /** True if any connected client is currently viewing (attached to) a terminal. */
+  isSubscribed(id: TerminalId): boolean {
+    for (const client of this.clients) {
+      if (client.subscribed.has(id)) return true
+    }
+    return false
+  }
+
   private send(client: BridgeClient, msg: BridgeServerMessage): void {
     // ws.OPEN === 1; avoid importing the enum to keep this dependency-light.
     if (client.ws.readyState === 1) {
@@ -75,6 +83,17 @@ export class ClientRegistry {
   broadcastState(state: AppState): void {
     for (const client of this.clients) {
       this.send(client, { type: 'state', state })
+    }
+  }
+
+  /**
+   * The derived window title (e.g. an agent's task) for a terminal. Sent to
+   * every client — the tab bar shows all terminals in a project, not just the
+   * attached one — so a phone's labels track the desktop's auto-titles.
+   */
+  forwardTitle(id: TerminalId, title: string | null): void {
+    for (const client of this.clients) {
+      this.send(client, { type: 'title', id, title })
     }
   }
 }

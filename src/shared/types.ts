@@ -241,6 +241,7 @@ export type BridgeServerMessage =
   | { type: 'hello'; state: AppState }
   | { type: 'attached'; id: TerminalId; snapshot: string }
   | { type: 'data'; id: TerminalId; data: string }
+  | { type: 'title'; id: TerminalId; title: string | null }
   | { type: 'exit'; id: TerminalId; exitCode: number; signal?: number }
   | { type: 'state'; state: AppState }
   | { type: 'error'; message: string }

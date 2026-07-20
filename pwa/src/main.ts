@@ -57,6 +57,9 @@ interface UiState {
   online: boolean
   /** terminal ids that have unseen output while not in the foreground */
   unread: Set<TerminalId>
+  /** derived window titles (agent task labels) keyed by terminal id; these
+   *  override the persisted "Terminal N" name on the tab, mirroring desktop */
+  titleByTerminal: Record<TerminalId, string>
   /** set after the user taps ＋ so we auto-focus the newly created terminal */
   selectNewestInProject: string | null
 }
@@ -67,6 +70,7 @@ const ui: UiState = {
   currentTermId: null,
   online: false,
   unread: new Set(),
+  titleByTerminal: {},
   selectNewestInProject: null,
 }
 
@@ -163,10 +167,21 @@ function handleServerMessage(msg: BridgeServerMessage): void {
       break
     }
     case 'attached':
-      if (msg.id === ui.currentTermId && term) {
+      if (msg.id === ui.currentTermId && term && fit) {
         term.reset()
+        // Fit to the phone's real width BEFORE replaying the snapshot, so the
+        // buffered bytes are interpreted once at the final column count instead
+        // of at xterm's 80-col default and then reflowed — the double pass is
+        // what shreds wide desktop-authored output into 1–2 chars per line.
+        try {
+          fit.fit()
+        } catch {
+          // element not laid out yet; a later resize event will refit
+        }
         term.write(msg.snapshot)
-        syncSize()
+        // Push our dimensions so the shared PTY resizes and the running program
+        // repaints its live UI at the phone's width.
+        send({ type: 'resize', id: msg.id, cols: term.cols, rows: term.rows })
       }
       break
     case 'data':
@@ -177,6 +192,12 @@ function handleServerMessage(msg: BridgeServerMessage): void {
         renderTabs()
       }
       break
+    case 'title': {
+      if (msg.title) ui.titleByTerminal[msg.id] = msg.title
+      else delete ui.titleByTerminal[msg.id]
+      renderTabs()
+      break
+    }
     case 'exit':
       if (msg.id === ui.currentTermId && term) {
         term.write(`\r\n\x1b[2m[process exited${msg.exitCode ? ` (${msg.exitCode})` : ''}]\x1b[0m\r\n`)
@@ -342,7 +363,8 @@ function renderTabs(): void {
     .map((t) => {
       const active = t.id === ui.currentTermId ? ' active' : ''
       const unread = ui.unread.has(t.id) && t.id !== ui.currentTermId ? '<span class="unread"></span>' : ''
-      return `<button class="tab${active}" data-id="${t.id}">${unread}${escapeHtml(t.name)}</button>`
+      const label = ui.titleByTerminal[t.id] || t.name
+      return `<button class="tab${active}" data-id="${t.id}">${unread}${escapeHtml(label)}</button>`
     })
     .join('')
   el.innerHTML = tabs + `<button class="tab add" id="addterm">＋</button>`

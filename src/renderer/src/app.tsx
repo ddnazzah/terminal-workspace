@@ -14,7 +14,7 @@ import { BottomPanel } from './components/workspace/bottom-panel'
 import { useProjects } from './hooks/use-projects'
 import { useWindowZoom } from './lib/zoom'
 import { createProjectTerminal, useWorkspace } from '@renderer/state/store'
-import { stripSpinner } from './lib/terminal-title'
+import { stripSpinner } from '@shared/terminal-title'
 import { HOME_PROJECT_ID, type ActivityStatus, type Project, type TerminalRecord } from '@shared/types'
 
 export default function App() {

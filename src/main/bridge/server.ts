@@ -11,6 +11,7 @@ import {
   type BridgePairing,
   type BridgeStatus,
 } from '@shared/types'
+import { cleanTitle } from '@shared/terminal-title'
 import { getState, onStateChange } from '../store/state'
 import { applyFromBridge } from '../sync'
 import {
@@ -74,6 +75,7 @@ export class MobileBridge {
     this.pty.addSink({
       onData: (p) => this.registry.forwardData(p),
       onExit: (p) => this.registry.forwardExit(p),
+      onActivity: (p) => this.registry.forwardTitle(p.id, cleanTitle(p.title)),
     })
 
     // Any state mutation — desktop- or phone-originated — refreshes phones so
@@ -302,10 +304,25 @@ export class MobileBridge {
     const client = this.registry.add(ws)
     this.updatePowerBlocker()
     // Seed the phone with the current project/terminal structure.
-    this.registry.sendTo(client, { type: 'hello', state: getState() })
+    const state = getState()
+    this.registry.sendTo(client, { type: 'hello', state })
+    // Seed derived window titles so a phone joining a running session shows the
+    // agent's task label instead of "Terminal N" until the next title change.
+    for (const project of state.projects) {
+      for (const terminal of project.terminals) {
+        const title = cleanTitle(this.pty.activityFor(terminal.id)?.title ?? null)
+        if (title) this.registry.sendTo(client, { type: 'title', id: terminal.id, title })
+      }
+    }
 
     const drop = (): void => {
+      const wasViewing = [...client.subscribed]
       this.registry.remove(client)
+      // Release size authority for any terminal this phone was the last viewer
+      // of, so the desktop reclaims its own dimensions.
+      for (const id of wasViewing) {
+        if (!this.registry.isSubscribed(id)) this.pty.releaseBridgeSize(id)
+      }
       this.updatePowerBlocker()
     }
     ws.on('message', (raw) => void this.onMessage(client, raw.toString()))
@@ -332,12 +349,17 @@ export class MobileBridge {
       }
       case 'detach':
         client.subscribed.delete(msg.id)
+        // If no phone is watching this terminal anymore, give size authority
+        // back to the desktop so its grid isn't stuck at the phone's width.
+        if (!this.registry.isSubscribed(msg.id)) this.pty.releaseBridgeSize(msg.id)
         break
       case 'input':
         this.pty.write(msg.id, msg.data)
         break
       case 'resize':
-        this.pty.resize(msg.id, msg.cols, msg.rows)
+        // A phone that's viewing a terminal owns its PTY size (see
+        // PtyManager.resize) so the running program renders for the phone.
+        this.pty.resize(msg.id, msg.cols, msg.rows, 'bridge')
         break
       case 'create':
         applyFromBridge(() => createTerminal(this.pty, msg.opts))
