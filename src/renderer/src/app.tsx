@@ -177,6 +177,11 @@ export default function App() {
     const onKey = (e: KeyboardEvent): void => {
       if (!(e.metaKey || e.ctrlKey)) return
 
+      // While the quick-open palette is open it owns keyboard input; don't let
+      // app shortcuts (⌘T, ⌘W, ⌘,, …) fire underneath it. The palette handles
+      // its own keys (Esc, arrows, Enter) on its input.
+      if (quickOpenOpen) return
+
       if (e.key === ',') {
         e.preventDefault()
         setSettingsOpen((v) => !v)
@@ -203,7 +208,8 @@ export default function App() {
 
       if (!selectedProject) return
 
-      if (e.key === 'p' || e.key === 'P') {
+      // ⌘P only; ⌘⇧P is left free for a future command palette.
+      if ((e.key === 'p' || e.key === 'P') && !e.shiftKey) {
         e.preventDefault()
         setQuickOpenOpen(true)
         return
@@ -236,6 +242,7 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey)
   }, [
     selectedProject,
+    quickOpenOpen,
     removeTerminalLocal,
     activeTerminalId,
     toggleSidebar,

@@ -33,6 +33,12 @@ describe('fuzzyMatch', () => {
     expect(fuzzyMatch('a', '')).toBeNull()
   })
 
+  test('reports code-point indices, not UTF-16 offsets, after an astral char', () => {
+    // '😀' is one code point (two UTF-16 units); the 'a' after it is index 1,
+    // so highlighting (which iterates code points) lines up.
+    expect(fuzzyMatch('a', '😀a')?.matchedIndices).toEqual([1])
+  })
+
   test('scores a consecutive run higher than a scattered one', () => {
     const consecutive = fuzzyMatch('app', 'app.tsx')
     const scattered = fuzzyMatch('app', 'a_p_p.tsx')
