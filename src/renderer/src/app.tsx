@@ -5,6 +5,7 @@ import { RightActivityBar } from './components/right-activity-bar'
 import { TerminalPane } from './components/workspace/terminal-pane'
 import { EmptyState } from './components/workspace/empty-state'
 import { SettingsModal } from './components/settings-modal'
+import { QuickOpen } from './components/quick-open/quick-open'
 import { UpdateBanner } from './components/update-banner'
 import { TopBar } from './components/top-bar'
 import { StatusBar } from './components/status-bar'
@@ -42,6 +43,7 @@ export default function App() {
   const closeFile = useWorkspace((s) => s.closeFile)
   const activeFileByProject = useWorkspace((s) => s.activeFileByProject)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [quickOpenOpen, setQuickOpenOpen] = useState(false)
 
   useWindowZoom()
 
@@ -175,6 +177,11 @@ export default function App() {
     const onKey = (e: KeyboardEvent): void => {
       if (!(e.metaKey || e.ctrlKey)) return
 
+      // While the quick-open palette is open it owns keyboard input; don't let
+      // app shortcuts (⌘T, ⌘W, ⌘,, …) fire underneath it. The palette handles
+      // its own keys (Esc, arrows, Enter) on its input.
+      if (quickOpenOpen) return
+
       if (e.key === ',') {
         e.preventDefault()
         setSettingsOpen((v) => !v)
@@ -200,6 +207,13 @@ export default function App() {
       }
 
       if (!selectedProject) return
+
+      // ⌘P only; ⌘⇧P is left free for a future command palette.
+      if ((e.key === 'p' || e.key === 'P') && !e.shiftKey) {
+        e.preventDefault()
+        setQuickOpenOpen(true)
+        return
+      }
 
       // ⌘W closes the focused file tab; otherwise it falls through to closing the terminal.
       if (e.key === 'w' && document.activeElement?.closest('[data-editor-surface]')) {
@@ -228,6 +242,7 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey)
   }, [
     selectedProject,
+    quickOpenOpen,
     removeTerminalLocal,
     activeTerminalId,
     toggleSidebar,
@@ -361,6 +376,13 @@ export default function App() {
         <EditorOverlay projectId={selectedProject.id} />
       )}
       <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      {selectedProject && (
+        <QuickOpen
+          open={quickOpenOpen}
+          projectId={selectedProject.id}
+          onClose={() => setQuickOpenOpen(false)}
+        />
+      )}
       <UpdateBanner />
     </div>
   )

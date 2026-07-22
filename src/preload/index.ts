@@ -26,6 +26,7 @@ import {
   type TerminalId,
   type TerminalRecord,
   type UpdateStatus,
+  type WalkResult,
   type WorkflowRunDetail,
   type WorkflowRunSummary,
   type WorkflowSummary,
@@ -165,6 +166,8 @@ const api = {
       ipcRenderer.invoke(IPC.fs.remove, projectId, relPath),
     duplicate: (projectId: ProjectId, relPath: string): Promise<string | null> =>
       ipcRenderer.invoke(IPC.fs.duplicate, projectId, relPath),
+    walk: (projectId: ProjectId): Promise<WalkResult> =>
+      ipcRenderer.invoke(IPC.fs.walk, projectId),
     open: (projectId: ProjectId, relPath: string): Promise<boolean> =>
       ipcRenderer.invoke(IPC.fs.open, projectId, relPath),
     reveal: (projectId: ProjectId, relPath: string): Promise<void> =>

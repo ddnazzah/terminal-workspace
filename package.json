@@ -1,6 +1,6 @@
 {
   "name": "wterm",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
   "description": "Multi-project, multi-terminal workspace IDE",
   "main": "./out/main/index.js",

@@ -177,6 +177,7 @@ export const IPC = {
     open: 'fs:open',
     reveal: 'fs:reveal',
     saveTempPaste: 'fs:save-temp-paste',
+    walk: 'fs:walk',
   },
   git: {
     repos: 'git:repos',
@@ -297,6 +298,14 @@ export interface FsEntry {
   isDirectory: boolean
   /** true if the path is ignored by git (matches a .gitignore rule, or sits under an ignored dir) */
   ignored?: boolean
+}
+
+/** Flat list of project files for quick-open, with a truncation flag. */
+export interface WalkResult {
+  /** Project-root-relative paths, forward slashes, files only. */
+  files: string[]
+  /** True when the file count hit the walker's cap. */
+  truncated: boolean
 }
 
 // ---- Local git ----
