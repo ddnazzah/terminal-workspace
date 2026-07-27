@@ -1,6 +1,6 @@
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { basename, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 
 // FinalTerm OSC 133 prompt markers emitted from precmd/preexec hooks.
 // The renderer uses the C..D span to drive the "terminal is working" indicator.
@@ -96,11 +96,22 @@ let cachedZshDir: string | null = null
 let cachedBashRc: string | null = null
 let cachedFishConf: string | null = null
 
+// The wrapper files live in $TMPDIR, and macOS periodic maintenance deletes
+// tmp files it considers stale (~3 days) even while the app is still running.
+// A path cached at first spawn can therefore go dark later, and every new
+// shell would boot with an empty ZDOTDIR/rcfile — no user aliases, no
+// integration. So the cache is only a location hint: every spawn re-checks
+// the files on disk and rewrites any that are missing.
+function ensureFile(path: string, content: string): void {
+  if (existsSync(path)) return
+  mkdirSync(dirname(path), { recursive: true, mode: 0o700 })
+  writeFileSync(path, content, { mode: 0o600 })
+}
+
 // zsh: override ZDOTDIR with a wrapper directory whose .zshenv/.zshrc source
 // the user's real ones (from _TW_USER_ZDOTDIR) and then layer our hooks on top.
 function prepareZshDir(): string {
-  if (cachedZshDir) return cachedZshDir
-  const dir = mkdtempSync(join(tmpdir(), 'tw-zsh-'))
+  const dir = cachedZshDir ?? mkdtempSync(join(tmpdir(), 'tw-zsh-'))
 
   // .zshenv runs first; preserve user's zshenv but keep ZDOTDIR pointing at
   // our wrapper so the wrapper .zshrc still loads next.
@@ -126,30 +137,28 @@ ${ZSH_INTEGRATION}
 unset _TW_USER_ZDOTDIR
 `
 
-  writeFileSync(join(dir, '.zshenv'), zshenv, { mode: 0o600 })
-  writeFileSync(join(dir, '.zshrc'), zshrc, { mode: 0o600 })
+  ensureFile(join(dir, '.zshenv'), zshenv)
+  ensureFile(join(dir, '.zshrc'), zshrc)
   cachedZshDir = dir
   return dir
 }
 
 function prepareBashRc(): string {
-  if (cachedBashRc) return cachedBashRc
-  const dir = mkdtempSync(join(tmpdir(), 'tw-bash-'))
+  const dir = cachedBashRc ? dirname(cachedBashRc) : mkdtempSync(join(tmpdir(), 'tw-bash-'))
   const rc = `# wTerm wrapper bashrc
 [ -f "\$HOME/.bashrc" ] && . "\$HOME/.bashrc"
 ${BASH_INTEGRATION}
 `
   const path = join(dir, 'bashrc')
-  writeFileSync(path, rc, { mode: 0o600 })
+  ensureFile(path, rc)
   cachedBashRc = path
   return path
 }
 
 function prepareFishConf(): string {
-  if (cachedFishConf) return cachedFishConf
-  const dir = mkdtempSync(join(tmpdir(), 'tw-fish-'))
+  const dir = cachedFishConf ? dirname(cachedFishConf) : mkdtempSync(join(tmpdir(), 'tw-fish-'))
   const path = join(dir, 'integration.fish')
-  writeFileSync(path, FISH_INTEGRATION, { mode: 0o600 })
+  ensureFile(path, FISH_INTEGRATION)
   cachedFishConf = path
   return path
 }
