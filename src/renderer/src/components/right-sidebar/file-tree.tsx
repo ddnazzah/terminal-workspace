@@ -3,6 +3,7 @@ import type { FsEntry, GitFileStatus, GitFileStatusMap, Project } from '@shared/
 import { createProjectTerminal, useWorkspace } from '@renderer/state/store'
 import { FileIcon } from './file-icon'
 import { statusColor } from '@renderer/lib/git-status-color'
+import { dropFolderFor, planMove } from '@renderer/lib/file-tree-move'
 
 interface Props {
   project: Project
@@ -28,6 +29,8 @@ export function FileTree({ project }: Props) {
   } | null>(null)
   const [renaming, setRenaming] = useState<string | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
+  const [draggingPath, setDraggingPath] = useState<string | null>(null)
+  const [dropFolder, setDropFolder] = useState<string | null>(null)
   const typeAhead = useRef<{ buffer: string; at: number }>({ buffer: '', at: 0 })
 
   const visibleRows = useMemo(
@@ -88,6 +91,33 @@ export function FileTree({ project }: Props) {
       }
     },
     [expanded, children, project.id]
+  )
+
+  const handleDropOn = useCallback(
+    async (target: FsEntry | null) => {
+      const source = draggingPath
+      setDraggingPath(null)
+      setDropFolder(null)
+      if (!source) return
+
+      const destFolder = dropFolderFor(target)
+      const plan = planMove(source, destFolder)
+      if (!plan) return
+
+      const moved = await window.api.fs.rename(project.id, plan.from, plan.to)
+      if (!moved) return
+
+      // Reveal the destination so the moved entry is visible where it landed.
+      if (destFolder !== '' && !expanded[destFolder]) {
+        setExpanded((e) => ({ ...e, [destFolder]: true }))
+      }
+
+      await reloadFolder(parentOf(source))
+      if (destFolder !== parentOf(source)) {
+        await reloadFolder(destFolder)
+      }
+    },
+    [draggingPath, project.id, expanded, reloadFolder]
   )
 
   const handleAction = useCallback(
@@ -313,6 +343,16 @@ export function FileTree({ project }: Props) {
           setMenu({ x: e.clientX, y: e.clientY, target: null })
         }}
         onClick={() => setMenu(null)}
+        onDragOver={(e) => {
+          if (!draggingPath) return
+          e.preventDefault()
+          e.dataTransfer.dropEffect = 'move'
+          setDropFolder('') // empty space below the rows = project root
+        }}
+        onDrop={(e) => {
+          e.preventDefault()
+          void handleDropOn(null)
+        }}
       >
         {loading && rootEntries.length === 0 ? (
           <div className="text-[11px] text-foreground/40 px-3 py-2">Loading…</div>
@@ -338,6 +378,15 @@ export function FileTree({ project }: Props) {
             selected={selected}
             renaming={renaming}
             creatingAt={creatingAt}
+            draggingPath={draggingPath}
+            dropFolder={dropFolder}
+            onDragStartRow={(e) => setDraggingPath(e.path)}
+            onDragOverRow={(e) => setDropFolder(dropFolderFor(e))}
+            onDropRow={(e) => void handleDropOn(e)}
+            onDragEndRow={() => {
+              setDraggingPath(null)
+              setDropFolder(null)
+            }}
             onToggle={toggle}
             onOpen={(e) => {
               setSelected(e.path)
@@ -408,6 +457,12 @@ interface TreeRowProps {
   renaming: string | null
   creatingAt: { parent: string; kind: 'file' | 'folder' } | null
   activePath: string | null
+  draggingPath: string | null
+  dropFolder: string | null
+  onDragStartRow: (entry: FsEntry) => void
+  onDragOverRow: (entry: FsEntry) => void
+  onDropRow: (entry: FsEntry) => void
+  onDragEndRow: () => void
   onToggle: (entry: FsEntry) => void
   onOpen: (entry: FsEntry) => void
   onContextMenu: (entry: FsEntry, ev: React.MouseEvent) => void
@@ -427,6 +482,12 @@ function TreeRow({
   renaming,
   creatingAt,
   activePath,
+  draggingPath,
+  dropFolder,
+  onDragStartRow,
+  onDragOverRow,
+  onDropRow,
+  onDragEndRow,
   onToggle,
   onOpen,
   onContextMenu,
@@ -439,6 +500,11 @@ function TreeRow({
   const kids = children_[entry.path]
   const isActive = !entry.isDirectory && activePath === entry.path
   const isSelected = entry.path === selected
+  const isDragging = draggingPath === entry.path
+  // Highlight the folder a drop would land in — the row itself when it is a
+  // directory, otherwise the containing folder shown via its own row.
+  const isDropTarget =
+    dropFolder !== null && entry.isDirectory && dropFolder === entry.path
   const status = entry.isDirectory
     ? folderStatus(entry.path, gitStatus)
     : gitStatus[entry.path]
@@ -456,16 +522,47 @@ function TreeRow({
       ) : (
         <button
           type="button"
+          draggable
+          onDragStart={(ev) => {
+            ev.dataTransfer.effectAllowed = 'move'
+            // Some platforms suppress the drag image without payload data.
+            ev.dataTransfer.setData('text/plain', entry.path)
+            onDragStartRow(entry)
+          }}
+          onDragOver={(ev) => {
+            if (!draggingPath) return
+            ev.preventDefault()
+            ev.dataTransfer.dropEffect = 'move'
+            onDragOverRow(entry)
+          }}
+          onDrop={(ev) => {
+            ev.preventDefault()
+            ev.stopPropagation()
+            onDropRow(entry)
+          }}
+          onDragEnd={onDragEndRow}
           onClick={() => onOpen(entry)}
           onContextMenu={(ev) => onContextMenu(entry, ev)}
           title={entry.ignored ? `${entry.name} — ignored by git` : entry.name}
           className={[
-            'group/row flex items-center w-full pr-2 py-[3px] text-left',
+            'group/row relative flex items-center w-full pr-2 py-[3px] text-left',
             isActive ? 'bg-foreground/10' : 'hover:bg-foreground/5',
             isSelected ? 'ring-1 ring-inset ring-accent/40' : '',
+            isDropTarget ? 'bg-accent/20 ring-1 ring-inset ring-accent/60' : '',
+            isDragging ? 'opacity-40' : '',
           ].join(' ')}
           style={{ paddingLeft: 8 + depth * 12 }}
         >
+          {/* Indent guides — one vertical rule per ancestor level, matching
+              VS Code's explorer. Centred on each level's twisty column. */}
+          {Array.from({ length: depth }, (_, level) => (
+            <span
+              key={level}
+              aria-hidden
+              className="absolute top-0 bottom-0 w-px bg-foreground/10"
+              style={{ left: 8 + level * 12 + 6 }}
+            />
+          ))}
           <span
             onClick={(ev) => {
               if (entry.isDirectory) {
@@ -535,6 +632,12 @@ function TreeRow({
                 renaming={renaming}
                 creatingAt={creatingAt}
                 activePath={activePath}
+                draggingPath={draggingPath}
+                dropFolder={dropFolder}
+                onDragStartRow={onDragStartRow}
+                onDragOverRow={onDragOverRow}
+                onDropRow={onDropRow}
+                onDragEndRow={onDragEndRow}
                 onToggle={onToggle}
                 onOpen={onOpen}
                 onContextMenu={onContextMenu}
