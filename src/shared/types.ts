@@ -10,6 +10,24 @@ export const MAX_TEXT_FILE_BYTES = 5 * 1024 * 1024
 /** Human-readable form of {@link MAX_TEXT_FILE_BYTES}, e.g. "5 MB". */
 export const MAX_TEXT_FILE_LABEL = '5 MB'
 
+/**
+ * Largest file the media preview will load. Higher than the text limit because
+ * images and video are legitimately bigger, but still bounded: the bytes cross
+ * IPC base64-encoded, so they cost roughly 4/3 of this in transit.
+ */
+export const MAX_MEDIA_FILE_BYTES = 64 * 1024 * 1024
+
+/** Human-readable form of {@link MAX_MEDIA_FILE_BYTES}. */
+export const MAX_MEDIA_FILE_LABEL = '64 MB'
+
+/** A previewable file loaded for the media viewer. */
+export interface MediaPayload {
+  /** `data:` URL ready to hand to an <img>, <video>, <audio> or <embed>. */
+  dataUrl: string
+  /** Size of the file on disk, in bytes. */
+  byteLength: number
+}
+
 export interface TerminalRecord {
   id: TerminalId
   name: string
@@ -168,6 +186,7 @@ export const IPC = {
   fs: {
     list: 'fs:list',
     readText: 'fs:read-text',
+    readMedia: 'fs:read-media',
     writeText: 'fs:write-text',
     createFile: 'fs:create-file',
     createFolder: 'fs:create-folder',

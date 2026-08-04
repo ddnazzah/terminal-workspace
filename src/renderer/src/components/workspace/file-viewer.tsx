@@ -5,8 +5,9 @@ import { useSettings } from '@renderer/state/settings'
 import { formattableParser, formatText } from '@renderer/lib/formatter'
 import { MonacoEditor, gcMonacoModels } from './monaco-editor'
 import { MarkdownPreview } from './markdown-preview'
+import { MediaViewer } from './media-viewer'
+import { mediaKindFor } from '@shared/media-type'
 
-const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'ico', 'bmp'])
 const MARKDOWN_EXTS = new Set(['md', 'mdx', 'markdown'])
 
 interface Props {
@@ -34,8 +35,11 @@ export function FileViewer({ projectId }: Props) {
     for (const file of projectTabs) {
       const state = fileStates[tabKey(file)]
       if (state?.kind !== 'loading') continue
-      const ext = extOf(file.path)
-      if (IMAGE_EXTS.has(ext)) {
+      // SVG is text as well as an image, so it takes the normal text path and
+      // gets a preview/source toggle. Every other media kind is loaded by the
+      // media viewer itself, straight from bytes.
+      const media = mediaKindFor(file.path)
+      if (media !== null && media !== 'svg') {
         setFileState(file, { kind: 'binary' })
         continue
       }
@@ -95,6 +99,12 @@ function EditorPane({
   const state = useWorkspace((s) => s.fileStates[tabKey(file)])
   const editorSettings = useSettings((s) => s.editor)
 
+  // Media renders straight from bytes — it never waits on the text state.
+  const media = mediaKindFor(file.path)
+  if (media !== null && media !== 'svg') {
+    return <MediaViewer projectId={file.projectId} path={file.path} kind={media} />
+  }
+
   if (!state || state.kind === 'loading') {
     return <div className="text-[12px] text-foreground/45 p-4">Loading…</div>
   }
@@ -111,6 +121,19 @@ function EditorPane({
   }
 
   const name = file.path.split('/').pop() ?? file.path
+
+  if (media === 'svg') {
+    return (
+      <SvgPane
+        name={name}
+        content={state.current}
+        fileKey={tabKey(file)}
+        onSave={(t) => void onSave(file, t)}
+        onChange={(t) => onChange(file, t)}
+      />
+    )
+  }
+
   const isMarkdown = MARKDOWN_EXTS.has(extOf(file.path))
   if (isMarkdown) {
     return <MarkdownPane name={name} content={state.current} onSave={(t) => void onSave(file, t)} onChange={(t) => onChange(file, t)} fileKey={tabKey(file)} />
@@ -140,6 +163,59 @@ function EditorPane({
       onSave={(text) => void onSave(file, text)}
       format={format}
     />
+  )
+}
+
+/**
+ * SVG gets both views. The preview is built from the in-editor text rather than
+ * re-read from disk, so unsaved edits render live.
+ */
+function SvgPane({
+  name,
+  content,
+  fileKey,
+  onSave,
+  onChange,
+}: {
+  name: string
+  content: string
+  fileKey: string
+  onSave: (text: string) => void
+  onChange: (text: string) => void
+}) {
+  const [mode, setMode] = useState<'preview' | 'code'>('preview')
+
+  const previewUrl = useMemo(
+    () => `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(content)))}`,
+    [content]
+  )
+
+  return (
+    <div className="flex h-full flex-col">
+      <div className="flex shrink-0 items-center justify-end gap-1 border-b border-foreground/7 px-2 py-1">
+        <ModeButton active={mode === 'preview'} onClick={() => setMode('preview')}>
+          Preview
+        </ModeButton>
+        <ModeButton active={mode === 'code'} onClick={() => setMode('code')}>
+          Code
+        </ModeButton>
+      </div>
+      <div className="min-h-0 flex-1">
+        {mode === 'preview' ? (
+          <div className="flex h-full items-center justify-center overflow-auto p-6">
+            <img src={previewUrl} alt={name} className="max-h-full max-w-full" />
+          </div>
+        ) : (
+          <MonacoEditor
+            fileKey={fileKey}
+            filename={name}
+            initialContent={content}
+            onChange={onChange}
+            onSave={onSave}
+          />
+        )}
+      </div>
+    </div>
   )
 }
 

@@ -3,7 +3,16 @@ import { spawn } from 'node:child_process'
 import { promises as fs } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join, relative, resolve, sep } from 'node:path'
-import { IPC, MAX_TEXT_FILE_BYTES, type FsEntry, type ProjectId, type WalkResult } from '@shared/types'
+import {
+  IPC,
+  MAX_MEDIA_FILE_BYTES,
+  MAX_TEXT_FILE_BYTES,
+  type FsEntry,
+  type MediaPayload,
+  type ProjectId,
+  type WalkResult,
+} from '@shared/types'
+import { mimeTypeFor } from '@shared/media-type'
 import { getProject } from '../store/state'
 import { walkProjectFiles } from './walk-project'
 
@@ -113,6 +122,28 @@ export function registerFsIpc(): void {
         const stat = await fs.stat(abs)
         if (!stat.isFile() || stat.size > MAX_TEXT_BYTES) return null
         return await fs.readFile(abs, 'utf-8')
+      } catch {
+        return null
+      }
+    }
+  )
+
+  ipcMain.handle(
+    IPC.fs.readMedia,
+    async (_e, projectId: ProjectId, relPath: string): Promise<MediaPayload | null> => {
+      const project = getProject(projectId)
+      if (!project) return null
+      const abs = resolveSafe(project.path, relPath)
+      if (!abs) return null
+      try {
+        const stat = await fs.stat(abs)
+        if (!stat.isFile() || stat.size > MAX_MEDIA_FILE_BYTES) return null
+
+        const bytes = await fs.readFile(abs)
+        return {
+          dataUrl: `data:${mimeTypeFor(relPath)};base64,${bytes.toString('base64')}`,
+          byteLength: stat.size,
+        }
       } catch {
         return null
       }

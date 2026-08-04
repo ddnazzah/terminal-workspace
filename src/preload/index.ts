@@ -18,6 +18,7 @@ import {
   type ProjectId,
   type PullRequestDetail,
   type PullRequestSummary,
+  type MediaPayload,
   type RepoRef,
   type TerminalDataPayload,
   type TerminalExitPayload,
@@ -154,6 +155,8 @@ const api = {
       ipcRenderer.invoke(IPC.fs.list, projectId, relPath),
     readText: (projectId: ProjectId, relPath: string): Promise<string | null> =>
       ipcRenderer.invoke(IPC.fs.readText, projectId, relPath),
+    readMedia: (projectId: ProjectId, relPath: string): Promise<MediaPayload | null> =>
+      ipcRenderer.invoke(IPC.fs.readMedia, projectId, relPath),
     writeText: (projectId: ProjectId, relPath: string, content: string): Promise<boolean> =>
       ipcRenderer.invoke(IPC.fs.writeText, projectId, relPath, content),
     createFile: (projectId: ProjectId, relPath: string): Promise<boolean> =>
