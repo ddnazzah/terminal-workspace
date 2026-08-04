@@ -76,3 +76,35 @@ export function planMove(source: string, destFolder: string): MovePlan | null {
     to: destFolder === '' ? name : `${destFolder}/${name}`,
   }
 }
+
+/** True when `path` sits inside `ancestor` (not merely sharing a name prefix). */
+function isInside(path: string, ancestor: string): boolean {
+  return path.startsWith(`${ancestor}/`)
+}
+
+/**
+ * Plan a multi-entry drop, preserving the given order.
+ *
+ * Entries whose ancestor is also being moved are skipped — the ancestor carries
+ * them along, and moving them separately would relocate them twice. Invalid and
+ * no-op moves are dropped, so an empty result means nothing should happen.
+ */
+export function planMoves(sources: readonly string[], destFolder: string): MovePlan[] {
+  const plans: MovePlan[] = []
+
+  for (const source of sources) {
+    const coveredByAncestor = sources.some(
+      (other) => other !== source && isInside(source, other)
+    )
+    if (coveredByAncestor) {
+      continue
+    }
+
+    const plan = planMove(source, destFolder)
+    if (plan) {
+      plans.push(plan)
+    }
+  }
+
+  return plans
+}

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { dropFolderFor, planMove } from './file-tree-move'
+import { dropFolderFor, planMove, planMoves } from './file-tree-move'
 
 describe('dropFolderFor', () => {
   test('returns the folder itself when dropping onto a directory', () => {
@@ -78,5 +78,51 @@ describe('planMove', () => {
 
   test('returns null for an empty source path (the project root)', () => {
     expect(planMove('', 'src')).toBeNull()
+  })
+})
+
+describe('planMoves', () => {
+  test('moves every selected entry into the destination', () => {
+    // Arrange
+    const sources = ['src/a.ts', 'src/b.ts']
+
+    // Act
+    const plans = planMoves(sources, 'src/lib')
+
+    // Assert
+    expect(plans).toEqual([
+      { from: 'src/a.ts', to: 'src/lib/a.ts' },
+      { from: 'src/b.ts', to: 'src/lib/b.ts' },
+    ])
+  })
+
+  test('drops entries already inside the destination', () => {
+    // 'src/lib/keep.ts' is already there, so only the outsider moves.
+    expect(planMoves(['src/lib/keep.ts', 'src/move.ts'], 'src/lib')).toEqual([
+      { from: 'src/move.ts', to: 'src/lib/move.ts' },
+    ])
+  })
+
+  test('skips descendants when their ancestor is also selected', () => {
+    // Dragging a folder and a file inside it should move the folder only —
+    // the child travels with it, and moving it separately would be wrong.
+    expect(planMoves(['src/lib', 'src/lib/util.ts'], 'dest')).toEqual([
+      { from: 'src/lib', to: 'dest/lib' },
+    ])
+  })
+
+  test('keeps a sibling that merely shares a name prefix', () => {
+    expect(planMoves(['src', 'src-legacy'], 'dest')).toEqual([
+      { from: 'src', to: 'dest/src' },
+      { from: 'src-legacy', to: 'dest/src-legacy' },
+    ])
+  })
+
+  test('returns an empty list when every move is invalid', () => {
+    expect(planMoves(['src/lib'], 'src/lib/nested')).toEqual([])
+  })
+
+  test('returns an empty list for an empty selection', () => {
+    expect(planMoves([], 'dest')).toEqual([])
   })
 })

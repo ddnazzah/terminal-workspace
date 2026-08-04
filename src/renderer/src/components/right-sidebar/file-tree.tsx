@@ -3,7 +3,8 @@ import type { FsEntry, GitFileStatus, GitFileStatusMap, Project } from '@shared/
 import { createProjectTerminal, useWorkspace } from '@renderer/state/store'
 import { FileIcon } from './file-icon'
 import { statusColor } from '@renderer/lib/git-status-color'
-import { dropFolderFor, planMove } from '@renderer/lib/file-tree-move'
+import { dropFolderFor, planMoves } from '@renderer/lib/file-tree-move'
+import { nextSelection, type SelectionState } from '@renderer/lib/file-tree-selection'
 
 interface Props {
   project: Project
@@ -28,7 +29,20 @@ export function FileTree({ project }: Props) {
     kind: 'file' | 'folder'
   } | null>(null)
   const [renaming, setRenaming] = useState<string | null>(null)
-  const [selected, setSelected] = useState<string | null>(null)
+  const [selectionState, setSelectionState] = useState<SelectionState>({
+    selection: new Set<string>(),
+    anchor: null,
+  })
+  // The anchor doubles as the keyboard cursor, so single-row callers (arrow
+  // keys, type-ahead, context menu) can keep treating selection as one path.
+  const selected = selectionState.anchor
+  const setSelected = useCallback((path: string | null) => {
+    setSelectionState(
+      path === null
+        ? { selection: new Set<string>(), anchor: null }
+        : { selection: new Set([path]), anchor: path }
+    )
+  }, [])
   const [draggingPath, setDraggingPath] = useState<string | null>(null)
   const [dropFolder, setDropFolder] = useState<string | null>(null)
   const typeAhead = useRef<{ buffer: string; at: number }>({ buffer: '', at: 0 })
@@ -100,24 +114,38 @@ export function FileTree({ project }: Props) {
       setDropFolder(null)
       if (!source) return
 
+      // Dragging a row that is part of the selection moves the whole
+      // selection, as in VS Code; dragging an unselected row moves just it.
+      const sources = selectionState.selection.has(source)
+        ? [...selectionState.selection]
+        : [source]
+
       const destFolder = dropFolderFor(target)
-      const plan = planMove(source, destFolder)
-      if (!plan) return
+      const plans = planMoves(sources, destFolder)
+      if (plans.length === 0) return
 
-      const moved = await window.api.fs.rename(project.id, plan.from, plan.to)
-      if (!moved) return
+      const movedFrom: string[] = []
+      for (const plan of plans) {
+        const moved = await window.api.fs.rename(project.id, plan.from, plan.to)
+        if (moved) movedFrom.push(plan.from)
+      }
+      if (movedFrom.length === 0) return
 
-      // Reveal the destination so the moved entry is visible where it landed.
+      // Reveal the destination so the moved entries are visible where they landed.
       if (destFolder !== '' && !expanded[destFolder]) {
         setExpanded((e) => ({ ...e, [destFolder]: true }))
       }
 
-      await reloadFolder(parentOf(source))
-      if (destFolder !== parentOf(source)) {
-        await reloadFolder(destFolder)
+      // Refresh every folder that lost an entry, plus the one that gained them.
+      const affected = new Set(movedFrom.map(parentOf))
+      affected.add(destFolder)
+      for (const folder of affected) {
+        await reloadFolder(folder)
       }
+
+      setSelectionState({ selection: new Set<string>(), anchor: null })
     },
-    [draggingPath, project.id, expanded, reloadFolder]
+    [draggingPath, selectionState, project.id, expanded, reloadFolder]
   )
 
   const handleAction = useCallback(
@@ -375,7 +403,7 @@ export function FileTree({ project }: Props) {
             expanded={expanded}
             children_={children}
             gitStatus={gitStatus}
-            selected={selected}
+            selection={selectionState.selection}
             renaming={renaming}
             creatingAt={creatingAt}
             draggingPath={draggingPath}
@@ -388,8 +416,22 @@ export function FileTree({ project }: Props) {
               setDropFolder(null)
             }}
             onToggle={toggle}
-            onOpen={(e) => {
-              setSelected(e.path)
+            onOpen={(e, ev) => {
+              const modifiers = {
+                meta: ev.metaKey || ev.ctrlKey,
+                shift: ev.shiftKey,
+              }
+              setSelectionState((current) =>
+                nextSelection(
+                  visibleRows.map((r) => r.path),
+                  current,
+                  e.path,
+                  modifiers
+                )
+              )
+              // A modified click only adjusts the selection — matching VS Code,
+              // it never expands a folder or opens a file.
+              if (modifiers.meta || modifiers.shift) return
               if (e.isDirectory) void toggle(e)
               else openFile({ projectId: project.id, path: e.path })
             }}
@@ -453,7 +495,7 @@ interface TreeRowProps {
   expanded: Record<string, boolean>
   children_: ChildrenMap
   gitStatus: GitFileStatusMap
-  selected: string | null
+  selection: ReadonlySet<string>
   renaming: string | null
   creatingAt: { parent: string; kind: 'file' | 'folder' } | null
   activePath: string | null
@@ -464,7 +506,7 @@ interface TreeRowProps {
   onDropRow: (entry: FsEntry) => void
   onDragEndRow: () => void
   onToggle: (entry: FsEntry) => void
-  onOpen: (entry: FsEntry) => void
+  onOpen: (entry: FsEntry, ev: React.MouseEvent) => void
   onContextMenu: (entry: FsEntry, ev: React.MouseEvent) => void
   onSubmitRename: (oldPath: string, newName: string) => void
   onSubmitCreate: (name: string) => void
@@ -478,7 +520,7 @@ function TreeRow({
   expanded,
   children_,
   gitStatus,
-  selected,
+  selection,
   renaming,
   creatingAt,
   activePath,
@@ -499,7 +541,7 @@ function TreeRow({
   const isOpen = !!expanded[entry.path]
   const kids = children_[entry.path]
   const isActive = !entry.isDirectory && activePath === entry.path
-  const isSelected = entry.path === selected
+  const isSelected = selection.has(entry.path)
   const isDragging = draggingPath === entry.path
   // Highlight the folder a drop would land in — the row itself when it is a
   // directory, otherwise the containing folder shown via its own row.
@@ -541,7 +583,7 @@ function TreeRow({
             onDropRow(entry)
           }}
           onDragEnd={onDragEndRow}
-          onClick={() => onOpen(entry)}
+          onClick={(ev) => onOpen(entry, ev)}
           onContextMenu={(ev) => onContextMenu(entry, ev)}
           title={entry.ignored ? `${entry.name} — ignored by git` : entry.name}
           className={[
@@ -628,7 +670,7 @@ function TreeRow({
                 expanded={expanded}
                 children_={children_}
                 gitStatus={gitStatus}
-                selected={selected}
+                selection={selection}
                 renaming={renaming}
                 creatingAt={creatingAt}
                 activePath={activePath}
