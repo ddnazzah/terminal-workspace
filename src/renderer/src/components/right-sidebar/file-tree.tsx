@@ -3,7 +3,7 @@ import type { FsEntry, GitFileStatus, GitFileStatusMap, Project } from '@shared/
 import { createProjectTerminal, useWorkspace } from '@renderer/state/store'
 import { FileIcon } from './file-icon'
 import { statusColor } from '@renderer/lib/git-status-color'
-import { dropFolderFor, planMoves } from '@renderer/lib/file-tree-move'
+import { dropFolderFor, planMoves, topMostPaths } from '@renderer/lib/file-tree-move'
 import { nextSelection, type SelectionState } from '@renderer/lib/file-tree-selection'
 
 interface Props {
@@ -33,10 +33,13 @@ export function FileTree({ project }: Props) {
     selection: new Set<string>(),
     anchor: null,
   })
-  // The anchor doubles as the keyboard cursor, so single-row callers (arrow
-  // keys, type-ahead, context menu) can keep treating selection as one path.
+  // The keyboard cursor is tracked separately from the anchor: shift+arrow
+  // moves the cursor while the anchor stays put, so the range can keep growing.
+  // They coincide for every unmodified interaction.
+  const [cursor, setCursor] = useState<string | null>(null)
   const selected = selectionState.anchor
   const setSelected = useCallback((path: string | null) => {
+    setCursor(path)
     setSelectionState(
       path === null
         ? { selection: new Set<string>(), anchor: null }
@@ -197,16 +200,33 @@ export function FileTree({ project }: Props) {
         return
       }
       if (action === 'delete') {
-        const ok = window.confirm(`Move "${target.name}" to Trash?`)
-        if (!ok) return
-        await window.api.fs.remove(project.id, target.path)
-        const parent = parentOf(target.path)
-        await reloadFolder(parent)
+        // Acting on a row inside the selection deletes the whole selection,
+        // as in VS Code; acting on a row outside it deletes just that row.
+        const targets = selectionState.selection.has(target.path)
+          ? topMostPaths([...selectionState.selection])
+          : [target.path]
+
+        const prompt =
+          targets.length === 1
+            ? `Move "${target.name}" to Trash?`
+            : `Move ${targets.length} items to Trash?`
+        if (!window.confirm(prompt)) return
+
+        const removed: string[] = []
+        for (const path of targets) {
+          const ok = await window.api.fs.remove(project.id, path)
+          if (ok) removed.push(path)
+        }
+
+        for (const folder of new Set(removed.map(parentOf))) {
+          await reloadFolder(folder)
+        }
+        setSelectionState({ selection: new Set<string>(), anchor: null })
         void reloadGit()
         return
       }
     },
-    [expanded, toggle, project.id, project.path, project.name, reloadFolder, reloadGit, openFile]
+    [expanded, toggle, project.id, project.path, project.name, reloadFolder, reloadGit, openFile, selectionState]
   )
 
   const submitCreate = useCallback(
@@ -258,17 +278,39 @@ export function FileTree({ project }: Props) {
   const onTreeKey = useCallback(
     (e: React.KeyboardEvent) => {
       if (renaming || creatingAt) return
-      const idx = visibleRows.findIndex((r) => r.path === selected)
+      const cursorPath = cursor ?? selected
+      const idx = visibleRows.findIndex((r) => r.path === cursorPath)
       const cur = idx >= 0 ? visibleRows[idx] : null
       switch (e.key) {
         case 'ArrowDown':
+        case 'ArrowUp': {
           e.preventDefault()
-          setSelected(visibleRows[Math.min(visibleRows.length - 1, idx + 1)]?.path ?? selected)
+          const step = e.key === 'ArrowDown' ? 1 : -1
+          const bounded =
+            step === 1
+              ? Math.min(visibleRows.length - 1, idx + 1)
+              : Math.max(0, idx - 1)
+          const nextPath = visibleRows[bounded]?.path ?? cursorPath
+          if (nextPath === null) return
+
+          if (e.shiftKey) {
+            // Extend the range from the anchor, exactly like shift-clicking
+            // the row the cursor lands on. Only the cursor moves.
+            setCursor(nextPath)
+            setSelectionState((current) =>
+              nextSelection(
+                visibleRows.map((r) => r.path),
+                current,
+                nextPath,
+                { meta: false, shift: true }
+              )
+            )
+            return
+          }
+
+          setSelected(nextPath)
           return
-        case 'ArrowUp':
-          e.preventDefault()
-          setSelected(visibleRows[Math.max(0, idx - 1)]?.path ?? selected)
-          return
+        }
         case 'ArrowRight':
           if (cur?.isDirectory && !expanded[cur.path]) {
             e.preventDefault()
@@ -323,7 +365,7 @@ export function FileTree({ project }: Props) {
         if (hit) setSelected(hit.path)
       }
     },
-    [renaming, creatingAt, visibleRows, selected, expanded, toggle, openFile, project.id, handleAction]
+    [renaming, creatingAt, visibleRows, selected, cursor, setSelected, expanded, toggle, openFile, project.id, handleAction]
   )
 
   return (

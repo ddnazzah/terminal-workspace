@@ -83,6 +83,19 @@ function isInside(path: string, ancestor: string): boolean {
 }
 
 /**
+ * Reduce a set of paths to the outermost ones, preserving order.
+ *
+ * A path whose ancestor is also present is redundant for any recursive
+ * operation — moving or deleting the ancestor already covers it, and acting on
+ * both would either relocate it twice or target a path that no longer exists.
+ */
+export function topMostPaths(paths: readonly string[]): string[] {
+  return paths.filter(
+    (path) => !paths.some((other) => other !== path && isInside(path, other))
+  )
+}
+
+/**
  * Plan a multi-entry drop, preserving the given order.
  *
  * Entries whose ancestor is also being moved are skipped — the ancestor carries
@@ -92,14 +105,7 @@ function isInside(path: string, ancestor: string): boolean {
 export function planMoves(sources: readonly string[], destFolder: string): MovePlan[] {
   const plans: MovePlan[] = []
 
-  for (const source of sources) {
-    const coveredByAncestor = sources.some(
-      (other) => other !== source && isInside(source, other)
-    )
-    if (coveredByAncestor) {
-      continue
-    }
-
+  for (const source of topMostPaths(sources)) {
     const plan = planMove(source, destFolder)
     if (plan) {
       plans.push(plan)

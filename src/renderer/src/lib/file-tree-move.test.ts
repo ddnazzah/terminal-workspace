@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { dropFolderFor, planMove, planMoves } from './file-tree-move'
+import { dropFolderFor, planMove, planMoves, topMostPaths } from './file-tree-move'
 
 describe('dropFolderFor', () => {
   test('returns the folder itself when dropping onto a directory', () => {
@@ -124,5 +124,27 @@ describe('planMoves', () => {
 
   test('returns an empty list for an empty selection', () => {
     expect(planMoves([], 'dest')).toEqual([])
+  })
+})
+
+describe('topMostPaths', () => {
+  test('keeps unrelated paths', () => {
+    expect(topMostPaths(['src/a.ts', 'lib/b.ts'])).toEqual(['src/a.ts', 'lib/b.ts'])
+  })
+
+  test('drops a descendant when its ancestor is present', () => {
+    expect(topMostPaths(['src', 'src/lib/util.ts'])).toEqual(['src'])
+  })
+
+  test('keeps a sibling sharing a name prefix', () => {
+    expect(topMostPaths(['src', 'src-legacy'])).toEqual(['src', 'src-legacy'])
+  })
+
+  test('collapses a deep chain to its root', () => {
+    expect(topMostPaths(['a', 'a/b', 'a/b/c'])).toEqual(['a'])
+  })
+
+  test('returns an empty list unchanged', () => {
+    expect(topMostPaths([])).toEqual([])
   })
 })
