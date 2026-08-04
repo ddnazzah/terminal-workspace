@@ -101,6 +101,7 @@ export function GitPanel({ project }: Props) {
       {repos.map((repo) => (
         <RepoSection
           key={repo.rel}
+          projectId={project.id}
           repo={repo}
           info={infos[repo.rel]}
           changes={sliceStatusForRepo(statusMap, repos, repo.rel)}

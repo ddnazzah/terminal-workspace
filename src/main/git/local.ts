@@ -1,8 +1,9 @@
 import { spawn } from 'node:child_process'
 import { promises as fs } from 'node:fs'
 import { join } from 'node:path'
-import type { GitFileStatusMap, GitInfo } from '@shared/types'
+import type { GitFileStatusMap, GitInfo, GitStatusEntry } from '@shared/types'
 import { parsePorcelainStatus } from './parse-status'
+import { parseStatusEntries } from './parse-status-entries'
 
 interface RunResult {
   code: number
@@ -134,4 +135,58 @@ export async function getFileStatus(cwd: string): Promise<GitFileStatusMap> {
   const res = await git(['status', '--porcelain=v1', '-z'], cwd)
   if (res.code !== 0) return {}
   return parsePorcelainStatus(res.stdout)
+}
+
+/** Status entries for one repo, keeping git's index/worktree axes separate. */
+export async function getStatusEntries(cwd: string): Promise<GitStatusEntry[]> {
+  const res = await git(['status', '--porcelain=v1', '-z'], cwd)
+  if (res.code !== 0) return []
+  return parseStatusEntries(res.stdout)
+}
+
+/** Stage paths (`git add`). Works for new, modified and deleted files alike. */
+export async function stagePaths(cwd: string, paths: string[]): Promise<boolean> {
+  if (paths.length === 0) return true
+  const res = await git(['add', '--', ...paths], cwd)
+  return res.code === 0
+}
+
+/** Unstage paths, leaving working-tree contents untouched. */
+export async function unstagePaths(cwd: string, paths: string[]): Promise<boolean> {
+  if (paths.length === 0) return true
+  const res = await git(['restore', '--staged', '--', ...paths], cwd)
+  return res.code === 0
+}
+
+/**
+ * Discard working-tree changes.
+ *
+ * Tracked paths are restored from the index; untracked paths have no index
+ * entry to restore from, so they are removed outright. Callers must confirm
+ * first — this is not recoverable through git.
+ */
+export async function discardPaths(
+  cwd: string,
+  tracked: string[],
+  untracked: string[]
+): Promise<boolean> {
+  let ok = true
+  if (tracked.length > 0) {
+    const res = await git(['restore', '--worktree', '--', ...tracked], cwd)
+    ok &&= res.code === 0
+  }
+  if (untracked.length > 0) {
+    const res = await git(['clean', '-fd', '--', ...untracked], cwd)
+    ok &&= res.code === 0
+  }
+  return ok
+}
+
+/** Commit whatever is staged. Returns git's output so the UI can surface failures. */
+export async function commitStaged(
+  cwd: string,
+  message: string
+): Promise<{ ok: boolean; output: string }> {
+  const res = await git(['commit', '-m', message], cwd)
+  return { ok: res.code === 0, output: `${res.stdout}${res.stderr}`.trim() }
 }

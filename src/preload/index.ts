@@ -18,6 +18,7 @@ import {
   type ProjectId,
   type PullRequestDetail,
   type PullRequestSummary,
+  type GitStatusEntry,
   type MediaPayload,
   type RepoRef,
   type TerminalDataPayload,
@@ -192,6 +193,25 @@ const api = {
       ipcRenderer.invoke(IPC.git.push, projectId, branch, repoRel),
     fileStatus: (projectId: ProjectId): Promise<GitFileStatusMap> =>
       ipcRenderer.invoke(IPC.git.fileStatus, projectId),
+    statusEntries: (projectId: ProjectId, repoRel: string): Promise<GitStatusEntry[]> =>
+      ipcRenderer.invoke(IPC.git.statusEntries, projectId, repoRel),
+    stage: (projectId: ProjectId, repoRel: string, paths: string[]): Promise<boolean> =>
+      ipcRenderer.invoke(IPC.git.stage, projectId, repoRel, paths),
+    unstage: (projectId: ProjectId, repoRel: string, paths: string[]): Promise<boolean> =>
+      ipcRenderer.invoke(IPC.git.unstage, projectId, repoRel, paths),
+    discard: (
+      projectId: ProjectId,
+      repoRel: string,
+      tracked: string[],
+      untracked: string[]
+    ): Promise<boolean> =>
+      ipcRenderer.invoke(IPC.git.discard, projectId, repoRel, tracked, untracked),
+    commit: (
+      projectId: ProjectId,
+      repoRel: string,
+      message: string
+    ): Promise<{ ok: boolean; output: string }> =>
+      ipcRenderer.invoke(IPC.git.commit, projectId, repoRel, message),
   },
   github: {
     getSettings: (): Promise<GitHubSettings> => ipcRenderer.invoke(IPC.github.getSettings),

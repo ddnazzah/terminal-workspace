@@ -1,8 +1,9 @@
 import type { GitInfo, RepoRef } from '@shared/types'
 import type { RepoChange } from '@renderer/lib/repo-status'
-import { ChangesList } from './changes-list'
+import { SourceControl } from './source-control'
 
 interface RepoSectionProps {
+  projectId: string
   repo: RepoRef
   info: GitInfo | undefined
   changes: RepoChange[]
@@ -18,6 +19,7 @@ interface RepoSectionProps {
 }
 
 export function RepoSection({
+  projectId,
   repo,
   info,
   changes,
@@ -90,7 +92,7 @@ export function RepoSection({
           ) : (
             <div className="px-3 py-2 text-[11px] text-foreground/40">Loading…</div>
           )}
-          <ChangesList changes={changes} />
+          <SourceControl projectId={projectId} repoRel={repo.rel} onChanged={onRefresh} />
         </>
       )}
     </section>

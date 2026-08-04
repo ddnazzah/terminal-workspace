@@ -203,6 +203,11 @@ export const IPC = {
     info: 'git:info',
     push: 'git:push',
     fileStatus: 'git:file-status',
+    statusEntries: 'git:status-entries',
+    stage: 'git:stage',
+    unstage: 'git:unstage',
+    discard: 'git:discard',
+    commit: 'git:commit',
   },
   github: {
     getSettings: 'github:get-settings',
@@ -353,6 +358,29 @@ export interface GitInfo {
 
 export type GitFileStatus = 'modified' | 'added' | 'deleted' | 'untracked' | 'conflict'
 export type GitFileStatusMap = Record<string, GitFileStatus>
+
+/** Per-axis status used by the Source Control view. `renamed` only ever appears on the index. */
+export type GitChangeStatus = 'modified' | 'added' | 'deleted' | 'untracked' | 'renamed'
+
+/**
+ * One entry from `git status`, keeping git's two axes separate.
+ *
+ * A file can carry both — staged, then edited again — in which case it belongs
+ * to Staged Changes *and* Changes at once. Conflicts set {@link conflict} and
+ * leave both axes null: they belong to Merge Changes only, because staging one
+ * from an ordinary group would silently mark it resolved.
+ */
+export interface GitStatusEntry {
+  /** Project-relative path (the destination path for a rename). */
+  path: string
+  /** Previous path, present only for renames and copies. */
+  oldPath?: string
+  /** Staged change, or null when the index is clean for this file. */
+  index: GitChangeStatus | null
+  /** Unstaged change, or null when the working tree is clean for this file. */
+  worktree: GitChangeStatus | null
+  conflict: boolean
+}
 
 // ---- GitHub ----
 
