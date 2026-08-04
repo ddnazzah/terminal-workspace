@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { FsEntry, GitFileStatus, GitFileStatusMap, Project } from '@shared/types'
 import { createProjectTerminal, useWorkspace } from '@renderer/state/store'
 import { FileIcon } from './file-icon'
+import { Codicon } from '../codicon'
 import { statusColor } from '@renderer/lib/git-status-color'
 import { dropFolderFor, planMoves, topMostPaths } from '@renderer/lib/file-tree-move'
 import { nextSelection, type SelectionState } from '@renderer/lib/file-tree-selection'
@@ -655,13 +656,12 @@ function TreeRow({
               }
             }}
             className={[
-              'inline-flex items-center justify-center w-3 h-3 mr-1 text-[8px] text-foreground/45 transition-transform',
+              'inline-flex items-center justify-center w-4 h-4 mr-0.5 text-foreground/55',
               entry.isDirectory ? '' : 'opacity-0',
-              isOpen ? 'rotate-90' : '',
             ].join(' ')}
             aria-hidden
           >
-            ▶
+            <Codicon name={isOpen ? 'chevron-down' : 'chevron-right'} size={16} />
           </span>
           <FileIcon
             name={entry.name}

@@ -3,6 +3,7 @@ import type { GitStatusEntry } from '@shared/types'
 import { useWorkspace } from '@renderer/state/store'
 import { groupChanges, statusLetter, type GitChangeRow } from '@renderer/lib/git-groups'
 import { FileIcon } from './file-icon'
+import { Codicon, type CodiconName } from '../codicon'
 
 interface Props {
   projectId: string
@@ -109,7 +110,10 @@ export function SourceControl({ projectId, repoRel, onChanged }: Props) {
         disabled={!canCommit}
         className="rounded-md bg-accent/80 px-2 py-1.5 text-[12px] font-medium text-white transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:bg-foreground/10 disabled:text-foreground/35"
       >
-        {busy ? 'Working…' : `Commit${groups.staged.length ? ` (${groups.staged.length})` : ''}`}
+        <span className="inline-flex items-center justify-center gap-1.5">
+          <Codicon name="check" size={16} />
+          {busy ? 'Working…' : `Commit${groups.staged.length ? ` (${groups.staged.length})` : ''}`}
+        </span>
       </button>
 
       {result && <div className="px-1 text-[11px] text-red-400">{result}</div>}
@@ -118,8 +122,8 @@ export function SourceControl({ projectId, repoRel, onChanged }: Props) {
         title="Merge Changes"
         rows={groups.merge}
         onOpen={open}
-        actions={(rows) => [{ label: 'Stage All', glyph: '+', run: () => stage(rows.map((r) => r.path)) }]}
-        rowActions={(row) => [{ label: 'Stage', glyph: '+', run: () => stage([row.path]) }]}
+        actions={(rows) => [{ label: 'Stage All', icon: 'add', run: () => stage(rows.map((r) => r.path)) }]}
+        rowActions={(row) => [{ label: 'Stage', icon: 'add', run: () => stage([row.path]) }]}
       />
 
       <Group
@@ -127,9 +131,9 @@ export function SourceControl({ projectId, repoRel, onChanged }: Props) {
         rows={groups.staged}
         onOpen={open}
         actions={(rows) => [
-          { label: 'Unstage All', glyph: '−', run: () => unstage(rows.map((r) => r.path)) },
+          { label: 'Unstage All', icon: 'remove', run: () => unstage(rows.map((r) => r.path)) },
         ]}
-        rowActions={(row) => [{ label: 'Unstage', glyph: '−', run: () => unstage([row.path]) }]}
+        rowActions={(row) => [{ label: 'Unstage', icon: 'remove', run: () => unstage([row.path]) }]}
       />
 
       <Group
@@ -137,12 +141,12 @@ export function SourceControl({ projectId, repoRel, onChanged }: Props) {
         rows={groups.changes}
         onOpen={open}
         actions={(rows) => [
-          { label: 'Discard All', glyph: '↩', run: () => discard(rows) },
-          { label: 'Stage All', glyph: '+', run: () => stage(rows.map((r) => r.path)) },
+          { label: 'Discard All', icon: 'discard', run: () => discard(rows) },
+          { label: 'Stage All', icon: 'add', run: () => stage(rows.map((r) => r.path)) },
         ]}
         rowActions={(row) => [
-          { label: 'Discard', glyph: '↩', run: () => discard([row]) },
-          { label: 'Stage', glyph: '+', run: () => stage([row.path]) },
+          { label: 'Discard', icon: 'discard', run: () => discard([row]) },
+          { label: 'Stage', icon: 'add', run: () => stage([row.path]) },
         ]}
       />
 
@@ -155,7 +159,7 @@ export function SourceControl({ projectId, repoRel, onChanged }: Props) {
 
 interface RowAction {
   label: string
-  glyph: string
+  icon: CodiconName
   run: () => void
 }
 
@@ -183,9 +187,7 @@ function Group({
           onClick={() => setCollapsed((c) => !c)}
           className="flex flex-1 items-center gap-1 text-left text-[11px] font-medium uppercase tracking-wide text-foreground/55 hover:text-foreground/80"
         >
-          <span aria-hidden className={collapsed ? '' : 'rotate-90'}>
-            ▶
-          </span>
+          <Codicon name={collapsed ? 'chevron-right' : 'chevron-down'} size={16} />
           {title}
         </button>
         <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover/hdr:opacity-100">
@@ -202,7 +204,9 @@ function Group({
         rows.map((row) => (
           <div
             key={`${title}:${row.path}`}
-            className="group/row flex items-center gap-1.5 rounded px-1 py-[3px] hover:bg-foreground/5"
+            /* 22px row — VS Code's .scm-view .monaco-list-row line-height */
+            style={{ height: 22 }}
+            className="group/row flex items-center gap-1.5 rounded px-1 hover:bg-foreground/5"
           >
             <button
               type="button"
@@ -224,10 +228,8 @@ function Group({
               ))}
             </div>
             <span
-              className={[
-                'w-3 text-center text-[11px] font-medium',
-                statusColorFor(row.status),
-              ].join(' ')}
+              className="w-4 shrink-0 text-center text-[11px] font-medium"
+              style={{ color: statusColorFor(row.status) }}
             >
               {statusLetter(row.status)}
             </span>
@@ -244,24 +246,30 @@ function IconButton({ action }: { action: RowAction }) {
       onClick={action.run}
       title={action.label}
       aria-label={action.label}
-      className="rounded px-1 text-[12px] text-foreground/50 hover:bg-foreground/10 hover:text-foreground"
+      className="flex h-5 w-5 items-center justify-center rounded text-foreground/60 hover:bg-foreground/10 hover:text-foreground"
     >
-      {action.glyph}
+      <Codicon name={action.icon} size={16} />
     </button>
   )
 }
 
+/**
+ * VS Code's own git decoration tokens (see globals.css). Returned as a CSS
+ * value rather than a Tailwind class so the colors stay exactly the upstream
+ * hexes instead of the nearest palette approximation.
+ */
 function statusColorFor(status: GitChangeRow['status']): string {
   switch (status) {
     case 'added':
+      return 'var(--vscode-gitDecoration-addedResourceForeground)'
     case 'untracked':
-      return 'text-green-400'
+      return 'var(--vscode-gitDecoration-untrackedResourceForeground)'
     case 'deleted':
-      return 'text-red-400'
+      return 'var(--vscode-gitDecoration-deletedResourceForeground)'
     case 'renamed':
-      return 'text-blue-400'
+      return 'var(--vscode-gitDecoration-renamedResourceForeground)'
     default:
-      return 'text-amber-300'
+      return 'var(--vscode-gitDecoration-modifiedResourceForeground)'
   }
 }
 

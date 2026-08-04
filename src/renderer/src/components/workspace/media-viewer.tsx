@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { MAX_MEDIA_FILE_LABEL, type MediaPayload } from '@shared/types'
 import type { MediaKind } from '@shared/media-type'
+import { Codicon } from '../codicon'
 
 /** Zoom stops, mirroring VS Code's image preview. */
 const ZOOM_STEPS = [0.1, 0.25, 0.5, 0.75, 1, 1.5, 2, 3, 5, 10, 20] as const
@@ -114,10 +115,10 @@ function ImagePane({ payload, name }: { payload: MediaPayload; name: string }) {
     <div className="flex h-full flex-col">
       <div className="flex shrink-0 items-center justify-end gap-1 border-b border-foreground/7 px-2 py-1">
         <ToolbarButton onClick={() => stepZoom(-1)} label="Zoom out">
-          −
+          <Codicon name="remove" size={16} />
         </ToolbarButton>
         <ToolbarButton onClick={() => stepZoom(1)} label="Zoom in">
-          +
+          <Codicon name="add" size={16} />
         </ToolbarButton>
         <ToolbarButton onClick={() => setZoom(null)} active={zoom === null} label="Fit to window">
           Fit

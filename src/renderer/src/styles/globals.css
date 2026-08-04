@@ -4,6 +4,8 @@
 @import '@heroui/styles';
 @import './themes.css';
 @import '@xterm/xterm/css/xterm.css';
+/* VS Code's own icon font — the icon set the workbench UI is drawn with. */
+@import '@vscode/codicons/dist/codicon.css';
 
 /* The terminal renders in this Nerd Font (see terminal-pane.tsx). It's bundled
    as a real file so the prompt's powerline/icon glyphs work on every machine —
@@ -155,4 +157,18 @@ body {
   50% {
     box-shadow: 0 0 6px 2px color-mix(in oklab, #ef4444 65%, transparent);
   }
+}
+
+/* Git decoration colors, lifted verbatim from VS Code's git extension
+   (extensions/git/package.json, dark defaults). Named after VS Code's own
+   theme tokens so a VS Code theme can be mapped onto them later. */
+:root {
+  --vscode-gitDecoration-addedResourceForeground: #81b88b;
+  --vscode-gitDecoration-modifiedResourceForeground: #e2c08d;
+  --vscode-gitDecoration-deletedResourceForeground: #c74e39;
+  --vscode-gitDecoration-renamedResourceForeground: #73c991;
+  --vscode-gitDecoration-untrackedResourceForeground: #73c991;
+  --vscode-gitDecoration-ignoredResourceForeground: #8c8c8c;
+  --vscode-gitDecoration-conflictingResourceForeground: #e4676b;
+  --vscode-gitDecoration-submoduleResourceForeground: #8db9e2;
 }
