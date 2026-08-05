@@ -101,14 +101,30 @@ export function SourceControl({ projectId, repoRel, onChanged }: Props) {
         }}
         rows={2}
         placeholder="Message (⌘Enter to commit)"
-        className="w-full resize-y rounded-md border border-foreground/10 bg-background px-2 py-1.5 text-[12px] text-foreground outline-none placeholder:text-foreground/35 focus:border-accent/50"
+        /* .scm-editor — 1px input border, input background, 4px radius */
+        style={{
+          border: '1px solid var(--vscode-input-border)',
+          background: 'var(--vscode-input-background)',
+          color: 'var(--vscode-input-foreground)',
+          borderRadius: 4,
+        }}
+        className="w-full resize-y px-2 py-1.5 text-[13px] outline-none focus:outline-1 focus:outline-[var(--vscode-focusBorder)]"
       />
 
       <button
         type="button"
         onClick={commit}
         disabled={!canCommit}
-        className="rounded-md bg-accent/80 px-2 py-1.5 text-[12px] font-medium text-white transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:bg-foreground/10 disabled:text-foreground/35"
+        style={
+          canCommit
+            ? {
+                background: 'var(--vscode-button-background)',
+                color: 'var(--vscode-button-foreground)',
+                borderRadius: 2,
+              }
+            : { background: 'var(--vscode-button-background)', opacity: 0.4, borderRadius: 2 }
+        }
+        className="px-2 py-[5px] text-[13px] text-[var(--vscode-button-foreground)] disabled:cursor-not-allowed"
       >
         <span className="inline-flex items-center justify-center gap-1.5">
           <Codicon name="check" size={16} />
@@ -185,7 +201,8 @@ function Group({
         <button
           type="button"
           onClick={() => setCollapsed((c) => !c)}
-          className="flex flex-1 items-center gap-1 text-left text-[11px] font-medium uppercase tracking-wide text-foreground/55 hover:text-foreground/80"
+          style={{ color: 'var(--vscode-sideBarSectionHeader-foreground)' }}
+          className="flex flex-1 items-center gap-1 text-left text-[11px] font-semibold uppercase"
         >
           <Codicon name={collapsed ? 'chevron-right' : 'chevron-down'} size={16} />
           {title}
@@ -195,7 +212,15 @@ function Group({
             <IconButton key={a.label} action={a} />
           ))}
         </div>
-        <span className="ml-1 min-w-4 rounded bg-foreground/10 px-1 text-center text-[10px] text-foreground/60">
+        {/* .scm-view .count { margin-left: 6px } */}
+        <span
+          style={{
+            marginLeft: 6,
+            background: 'var(--vscode-badge-background)',
+            color: 'var(--vscode-badge-foreground)',
+          }}
+          className="min-w-[18px] rounded-[11px] px-1.5 text-center text-[11px] leading-[18px]"
+        >
           {rows.length}
         </span>
       </div>
@@ -206,7 +231,7 @@ function Group({
             key={`${title}:${row.path}`}
             /* 22px row — VS Code's .scm-view .monaco-list-row line-height */
             style={{ height: 22 }}
-            className="group/row flex items-center gap-1.5 rounded px-1 hover:bg-foreground/5"
+            className="group/row flex items-center gap-1.5 px-1 hover:bg-[var(--vscode-list-hoverBackground)]"
           >
             <button
               type="button"
@@ -215,12 +240,13 @@ function Group({
               className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
             >
               <FileIcon name={basename(row.path)} isDirectory={false} />
-              <span className="truncate text-[12px] text-foreground/85">
+              <span
+                style={{ color: 'var(--vscode-sideBar-foreground)' }}
+                className="truncate text-[13px]"
+              >
                 {basename(row.path)}
               </span>
-              <span className="truncate text-[10px] text-foreground/35">
-                {dirname(row.path)}
-              </span>
+              <span className="truncate text-[13px] opacity-50">{dirname(row.path)}</span>
             </button>
             <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover/row:opacity-100">
               {rowActions(row).map((a) => (
@@ -228,8 +254,9 @@ function Group({
               ))}
             </div>
             <span
-              className="w-4 shrink-0 text-center text-[11px] font-medium"
-              style={{ color: statusColorFor(row.status) }}
+              /* .resource > .decoration-icon { width: 16px; margin-left: 5px } */
+              style={{ color: statusColorFor(row.status), width: 16, marginLeft: 5 }}
+              className="shrink-0 text-center text-[13px] font-medium"
             >
               {statusLetter(row.status)}
             </span>
@@ -246,7 +273,8 @@ function IconButton({ action }: { action: RowAction }) {
       onClick={action.run}
       title={action.label}
       aria-label={action.label}
-      className="flex h-5 w-5 items-center justify-center rounded text-foreground/60 hover:bg-foreground/10 hover:text-foreground"
+      style={{ color: 'var(--vscode-icon-foreground)' }}
+      className="flex h-[22px] w-[22px] items-center justify-center rounded-[5px] hover:bg-[var(--vscode-list-hoverBackground)] hover:!text-[var(--vscode-sideBar-foreground)]"
     >
       <Codicon name={action.icon} size={16} />
     </button>

@@ -159,10 +159,18 @@ body {
   }
 }
 
-/* Git decoration colors, lifted verbatim from VS Code's git extension
-   (extensions/git/package.json, dark defaults). Named after VS Code's own
-   theme tokens so a VS Code theme can be mapped onto them later. */
+/* ---------------------------------------------------------------------------
+   VS Code design tokens, copied verbatim from the upstream open-source repo so
+   the workbench surfaces match exactly rather than approximating with palette
+   colors.
+
+   Sources:
+     colors  — extensions/theme-defaults/themes/2026-dark.json (current default dark)
+     git     — extensions/git/package.json (dark defaults)
+     metrics — src/vs/workbench/contrib/scm/browser/media/scm.css
+   --------------------------------------------------------------------------- */
 :root {
+  /* Git decorations */
   --vscode-gitDecoration-addedResourceForeground: #81b88b;
   --vscode-gitDecoration-modifiedResourceForeground: #e2c08d;
   --vscode-gitDecoration-deletedResourceForeground: #c74e39;
@@ -171,4 +179,35 @@ body {
   --vscode-gitDecoration-ignoredResourceForeground: #8c8c8c;
   --vscode-gitDecoration-conflictingResourceForeground: #e4676b;
   --vscode-gitDecoration-submoduleResourceForeground: #8db9e2;
+
+  /* Inputs */
+  --vscode-input-background: #191a1b;
+  --vscode-input-border: #333536;
+  --vscode-input-foreground: #bfbfbf;
+  --vscode-input-placeholderForeground: #555555;
+
+  /* Side bar + section headers */
+  --vscode-sideBar-background: #191a1b;
+  --vscode-sideBar-foreground: #bfbfbf;
+  --vscode-sideBar-border: #2a2b2c;
+  --vscode-sideBarSectionHeader-background: #191a1b;
+  --vscode-sideBarSectionHeader-foreground: #bfbfbf;
+
+  /* Lists */
+  --vscode-list-hoverBackground: #ffffff14;
+  --vscode-list-activeSelectionBackground: #ffffff22;
+  --vscode-list-activeSelectionForeground: #ededed;
+  --vscode-list-inactiveSelectionBackground: #2c2d2e;
+
+  /* Buttons + badges */
+  --vscode-button-background: #297aa0;
+  --vscode-button-foreground: #ffffff;
+  --vscode-button-hoverBackground: #2b7da3;
+  --vscode-badge-background: #307e9f;
+  --vscode-badge-foreground: #ffffff;
+
+  /* Misc chrome */
+  --vscode-icon-foreground: #8c8c8c;
+  --vscode-focusBorder: #3994bcb3;
+  --vscode-panel-border: #2a2b2c;
 }
