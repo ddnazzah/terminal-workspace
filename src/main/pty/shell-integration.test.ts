@@ -65,3 +65,52 @@ describe('prepareShellIntegration (fish)', () => {
     expect(existsSync(confPath2)).toBe(true)
   })
 })
+
+describe('prepareShellIntegration (zsh) — inherited ZDOTDIR', () => {
+  test('ignores an inherited ZDOTDIR that is one of our own wrapper dirs', () => {
+    // Launching wTerm from inside a wTerm tab leaks that tab's ZDOTDIR into
+    // process.env. Treating it as "the user's" makes the new wrapper source the
+    // OLD wrapper's .zshrc instead of ~/.zshrc — and once $TMPDIR purges that
+    // old dir, the shell boots with no user config at all.
+    const first = prepareShellIntegration('/bin/zsh', { HOME })
+
+    const nested = prepareShellIntegration('/bin/zsh', {
+      HOME,
+      ZDOTDIR: first.env.ZDOTDIR,
+    })
+
+    expect(nested.env._TW_USER_ZDOTDIR).toBe(HOME)
+    expect(nested.env._TW_USER_ZDOTDIR).not.toBe(first.env.ZDOTDIR)
+  })
+
+  test('still honours a genuine user ZDOTDIR', () => {
+    const { env } = prepareShellIntegration('/bin/zsh', {
+      HOME,
+      ZDOTDIR: '/home/test/.config/zsh',
+    })
+
+    expect(env._TW_USER_ZDOTDIR).toBe('/home/test/.config/zsh')
+  })
+
+  test('prefers an already-captured _TW_USER_ZDOTDIR over a wrapper ZDOTDIR', () => {
+    // Two levels of nesting: the original user dir was captured on the first
+    // hop, so it must survive rather than being lost to the wrapper path.
+    const first = prepareShellIntegration('/bin/zsh', { HOME })
+
+    const nested = prepareShellIntegration('/bin/zsh', {
+      HOME,
+      ZDOTDIR: first.env.ZDOTDIR,
+      _TW_USER_ZDOTDIR: '/home/test/.config/zsh',
+    })
+
+    expect(nested.env._TW_USER_ZDOTDIR).toBe('/home/test/.config/zsh')
+  })
+
+  test('falls back to HOME when the inherited ZDOTDIR is a wrapper and HOME is all we have', () => {
+    const first = prepareShellIntegration('/bin/zsh', { HOME })
+
+    const nested = prepareShellIntegration('/bin/zsh', { HOME, ZDOTDIR: first.env.ZDOTDIR })
+
+    expect(nested.env._TW_USER_ZDOTDIR).toBe(HOME)
+  })
+})

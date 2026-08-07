@@ -92,6 +92,9 @@ interface PreparedSpawn {
   env: Record<string, string>
 }
 
+/** Prefix for the zsh wrapper dirs we mkdtemp — also how we recognise our own. */
+const ZSH_WRAPPER_PREFIX = 'tw-zsh-'
+
 let cachedZshDir: string | null = null
 let cachedBashRc: string | null = null
 let cachedFishConf: string | null = null
@@ -111,7 +114,7 @@ function ensureFile(path: string, content: string): void {
 // zsh: override ZDOTDIR with a wrapper directory whose .zshenv/.zshrc source
 // the user's real ones (from _TW_USER_ZDOTDIR) and then layer our hooks on top.
 function prepareZshDir(): string {
-  const dir = cachedZshDir ?? mkdtempSync(join(tmpdir(), 'tw-zsh-'))
+  const dir = cachedZshDir ?? mkdtempSync(join(tmpdir(), ZSH_WRAPPER_PREFIX))
 
   // .zshenv runs first; preserve user's zshenv but keep ZDOTDIR pointing at
   // our wrapper so the wrapper .zshrc still loads next.
@@ -163,6 +166,38 @@ function prepareFishConf(): string {
   return path
 }
 
+/** True when `dir` is one of the wrapper directories we generate ourselves. */
+function isOurWrapperDir(dir: string): boolean {
+  return basename(dir).startsWith(ZSH_WRAPPER_PREFIX)
+}
+
+/**
+ * The user's real ZDOTDIR, resisting our own wrapper leaking back in.
+ *
+ * Launching wTerm from inside a wTerm tab puts that tab's ZDOTDIR — one of our
+ * wrapper dirs — into the app's `process.env`, and every spawn copies it into
+ * `baseEnv`. Taking it at face value makes the new wrapper source the *old
+ * wrapper's* `.zshrc` instead of the user's, chaining one level deeper on each
+ * relaunch. As soon as macOS purges that older dir from $TMPDIR the shell boots
+ * with no user config at all: no aliases, no prompt, no PATH additions.
+ *
+ * So: prefer a previously captured `_TW_USER_ZDOTDIR` (the real one, saved on
+ * the first hop), ignore any ZDOTDIR that is ours, and fall back to HOME.
+ */
+function resolveUserZdotdir(baseEnv: Record<string, string>): string {
+  const captured = baseEnv._TW_USER_ZDOTDIR
+  if (captured && !isOurWrapperDir(captured)) {
+    return captured
+  }
+
+  const inherited = baseEnv.ZDOTDIR
+  if (inherited && !isOurWrapperDir(inherited)) {
+    return inherited
+  }
+
+  return baseEnv.HOME ?? ''
+}
+
 export function prepareShellIntegration(
   shellPath: string,
   baseEnv: Record<string, string>
@@ -171,10 +206,9 @@ export function prepareShellIntegration(
   switch (kind) {
     case 'zsh': {
       const dir = prepareZshDir()
-      const userZdotdir = baseEnv.ZDOTDIR ?? baseEnv.HOME ?? ''
       return {
         args: [],
-        env: { ...baseEnv, ZDOTDIR: dir, _TW_USER_ZDOTDIR: userZdotdir },
+        env: { ...baseEnv, ZDOTDIR: dir, _TW_USER_ZDOTDIR: resolveUserZdotdir(baseEnv) },
       }
     }
     case 'bash': {
