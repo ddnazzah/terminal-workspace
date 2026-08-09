@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { tabKey, useWorkspace, type OpenedFile } from '@renderer/state/store'
+import { decodeDiffTab, diffTabLabel } from '@renderer/lib/diff-tab'
 import { FileIcon } from '../right-sidebar/file-icon'
 
 interface Props {
@@ -59,7 +60,9 @@ export function FileTabs({ projectId }: Props) {
     >
       {projectTabs.map((file, i) => {
         const isActive = file.path === activePath
-        const name = file.path.split('/').pop() ?? file.path
+        // A diff tab's path is an encoded descriptor, not a filename.
+        const diff = decodeDiffTab(file.path)
+        const name = diff ? diffTabLabel(diff) : (file.path.split('/').pop() ?? file.path)
         const state = fileStates[tabKey(file)]
         const dirty = state?.kind === 'text' && state.current !== state.saved
         return (

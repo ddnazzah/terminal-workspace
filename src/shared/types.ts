@@ -208,6 +208,7 @@ export const IPC = {
     unstage: 'git:unstage',
     discard: 'git:discard',
     commit: 'git:commit',
+    fileAtRev: 'git:file-at-rev',
   },
   github: {
     getSettings: 'github:get-settings',

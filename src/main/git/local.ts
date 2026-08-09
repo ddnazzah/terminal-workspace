@@ -190,3 +190,21 @@ export async function commitStaged(
   const res = await git(['commit', '-m', message], cwd)
   return { ok: res.code === 0, output: `${res.stdout}${res.stderr}`.trim() }
 }
+
+/**
+ * File contents at a given revision, or null when the file does not exist
+ * there (an added file has no HEAD blob, an untracked file has no index entry).
+ *
+ * `rev` is 'HEAD' for the last commit or 'index' for what is staged; the
+ * working-tree side is read through the normal fs IPC, not here.
+ */
+export async function fileAtRev(
+  cwd: string,
+  relPath: string,
+  rev: 'HEAD' | 'index'
+): Promise<string | null> {
+  // `git show :path` reads the index; `git show HEAD:path` reads the commit.
+  const spec = rev === 'index' ? `:${relPath}` : `HEAD:${relPath}`
+  const res = await git(['show', spec], cwd)
+  return res.code === 0 ? res.stdout : null
+}

@@ -12,6 +12,7 @@ import { getProject } from '../store/state'
 import { discoverRepos, findRepo } from '../git/discover'
 import {
   commitStaged,
+  fileAtRev,
   discardPaths,
   getGitInfo,
   getStatusEntries,
@@ -110,6 +111,20 @@ export function registerGitIpc(): void {
     ): Promise<boolean> => {
       const cwd = repoCwd(projectId, repoRel)
       return cwd ? discardPaths(cwd, tracked, untracked) : false
+    }
+  )
+
+  ipcMain.handle(
+    IPC.git.fileAtRev,
+    async (
+      _e,
+      projectId: ProjectId,
+      repoRel: string,
+      relPath: string,
+      rev: 'HEAD' | 'index'
+    ): Promise<string | null> => {
+      const cwd = repoCwd(projectId, repoRel)
+      return cwd ? fileAtRev(cwd, relPath, rev) : null
     }
   )
 

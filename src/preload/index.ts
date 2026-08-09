@@ -212,6 +212,13 @@ const api = {
       message: string
     ): Promise<{ ok: boolean; output: string }> =>
       ipcRenderer.invoke(IPC.git.commit, projectId, repoRel, message),
+    fileAtRev: (
+      projectId: ProjectId,
+      repoRel: string,
+      relPath: string,
+      rev: 'HEAD' | 'index'
+    ): Promise<string | null> =>
+      ipcRenderer.invoke(IPC.git.fileAtRev, projectId, repoRel, relPath, rev),
   },
   github: {
     getSettings: (): Promise<GitHubSettings> => ipcRenderer.invoke(IPC.github.getSettings),

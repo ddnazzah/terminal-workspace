@@ -7,6 +7,8 @@ import { MonacoEditor, gcMonacoModels } from './monaco-editor'
 import { MarkdownPreview } from './markdown-preview'
 import { MediaViewer } from './media-viewer'
 import { mediaKindFor } from '@shared/media-type'
+import { DiffViewer } from './diff-viewer'
+import { decodeDiffTab, isDiffTab } from '@renderer/lib/diff-tab'
 
 const MARKDOWN_EXTS = new Set(['md', 'mdx', 'markdown'])
 
@@ -35,6 +37,12 @@ export function FileViewer({ projectId }: Props) {
     for (const file of projectTabs) {
       const state = fileStates[tabKey(file)]
       if (state?.kind !== 'loading') continue
+      // Diff tabs fetch both sides themselves; there is no single file to load.
+      if (isDiffTab(file.path)) {
+        setFileState(file, { kind: 'binary' })
+        continue
+      }
+
       // SVG is text as well as an image, so it takes the normal text path and
       // gets a preview/source toggle. Every other media kind is loaded by the
       // media viewer itself, straight from bytes.
@@ -98,6 +106,18 @@ function EditorPane({
 }) {
   const state = useWorkspace((s) => s.fileStates[tabKey(file)])
   const editorSettings = useSettings((s) => s.editor)
+
+  const diff = decodeDiffTab(file.path)
+  if (diff) {
+    return (
+      <DiffViewer
+        projectId={file.projectId}
+        repoRel={diff.repoRel}
+        row={{ path: diff.path, status: diff.status, isUntracked: diff.isUntracked }}
+        group={diff.group}
+      />
+    )
+  }
 
   // Media renders straight from bytes — it never waits on the text state.
   const media = mediaKindFor(file.path)

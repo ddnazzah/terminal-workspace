@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { GitStatusEntry } from '@shared/types'
 import { useWorkspace } from '@renderer/state/store'
 import { groupChanges, statusLetter, type GitChangeRow } from '@renderer/lib/git-groups'
+import { encodeDiffTab } from '@renderer/lib/diff-tab'
+import type { GitGroupKind } from '@renderer/lib/git-diff-sides'
 import { FileIcon } from './file-icon'
 import { Codicon, type CodiconName } from '../codicon'
 
@@ -76,9 +78,19 @@ export function SourceControl({ projectId, repoRel, onChanged }: Props) {
     })
   }
 
-  const open = (row: GitChangeRow) => {
-    const full = repoRel ? `${repoRel}/${row.path}` : row.path
-    openFile({ projectId, path: full })
+  // Clicking a row opens a diff, as in VS Code — not the plain file. The group
+  // decides which two revisions are compared, so it is part of the tab identity.
+  const open = (row: GitChangeRow, group: GitGroupKind) => {
+    openFile({
+      projectId,
+      path: encodeDiffTab({
+        repoRel,
+        group,
+        path: row.path,
+        status: row.status,
+        isUntracked: row.isUntracked,
+      }),
+    })
   }
 
   if (entries === null) {
@@ -137,7 +149,7 @@ export function SourceControl({ projectId, repoRel, onChanged }: Props) {
       <Group
         title="Merge Changes"
         rows={groups.merge}
-        onOpen={open}
+        onOpen={(row) => open(row, 'merge')}
         actions={(rows) => [{ label: 'Stage All', icon: 'add', run: () => stage(rows.map((r) => r.path)) }]}
         rowActions={(row) => [{ label: 'Stage', icon: 'add', run: () => stage([row.path]) }]}
       />
@@ -145,7 +157,7 @@ export function SourceControl({ projectId, repoRel, onChanged }: Props) {
       <Group
         title="Staged Changes"
         rows={groups.staged}
-        onOpen={open}
+        onOpen={(row) => open(row, 'staged')}
         actions={(rows) => [
           { label: 'Unstage All', icon: 'remove', run: () => unstage(rows.map((r) => r.path)) },
         ]}
@@ -155,7 +167,7 @@ export function SourceControl({ projectId, repoRel, onChanged }: Props) {
       <Group
         title="Changes"
         rows={groups.changes}
-        onOpen={open}
+        onOpen={(row) => open(row, 'changes')}
         actions={(rows) => [
           { label: 'Discard All', icon: 'discard', run: () => discard(rows) },
           { label: 'Stage All', icon: 'add', run: () => stage(rows.map((r) => r.path)) },
