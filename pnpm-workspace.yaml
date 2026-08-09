@@ -1,0 +1,16 @@
+# pnpm 11 no longer reads the "pnpm" field in package.json; build-script
+# approvals live here instead. Values carried over from the previous
+# package.json `pnpm.onlyBuiltDependencies`.
+allowBuilds:
+  # Needs its postinstall to download the platform binary — vite/electron-vite
+  # cannot run without it.
+  esbuild: true
+  # Native module: must compile against the Electron ABI.
+  node-pty: true
+  # Downloads the Electron binary itself.
+  electron: true
+  '@electron/rebuild': true
+  # Not needed: core-js only prints a funding notice, and the Windows
+  # installer builder is unused on macOS.
+  core-js: false
+  electron-winstaller: false
