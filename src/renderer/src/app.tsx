@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useKeybindings } from '@renderer/hooks/use-keybindings'
+import { CONTEXT, DEFAULT_BINDINGS } from '@renderer/lib/commands'
 import { ProjectList } from './components/sidebar/project-list'
 import { RightSidebar } from './components/right-sidebar/right-sidebar'
 import { RightActivityBar } from './components/right-activity-bar'
@@ -173,85 +175,67 @@ export default function App() {
     return () => window.removeEventListener('focus', tryClear)
   }, [activeTerminalId, clearUnread, clearAttention, attentionByTerminal])
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      if (!(e.metaKey || e.ctrlKey)) return
+  // Global shortcuts run through the command registry (lib/commands.ts) rather
+  // than a chain of hand-rolled key checks, so they are declared in one table
+  // and can be rebound. Widget-local keys (Esc, Enter, arrows) stay with their
+  // widgets, as in VS Code.
+  const commandContexts = useMemo(() => {
+    const active = new Set<string>()
+    if (document.activeElement?.closest('[data-editor-surface]')) {
+      active.add(CONTEXT.editorFocus)
+    } else if (activeTerminalId) {
+      active.add(CONTEXT.terminalFocus)
+    }
+    return active
+  }, [activeTerminalId, quickOpenOpen])
 
-      // While the quick-open palette is open it owns keyboard input; don't let
-      // app shortcuts (⌘T, ⌘W, ⌘,, …) fire underneath it. The palette handles
-      // its own keys (Esc, arrows, Enter) on its input.
-      if (quickOpenOpen) return
-
-      if (e.key === ',') {
-        e.preventDefault()
-        setSettingsOpen((v) => !v)
-        return
-      }
-
-      if ((e.key === 'b' || e.key === 'B') && e.shiftKey) {
-        e.preventDefault()
-        toggleRightSidebar()
-        return
-      }
-
-      if (e.key === 'b' || e.key === 'B') {
-        e.preventDefault()
-        toggleSidebar()
-        return
-      }
-
-      if (e.key === 'j' || e.key === 'J') {
-        e.preventDefault()
-        toggleHomeTerminal()
-        return
-      }
-
-      if (!selectedProject) return
-
-      // ⌘P only; ⌘⇧P is left free for a future command palette.
-      if ((e.key === 'p' || e.key === 'P') && !e.shiftKey) {
-        e.preventDefault()
-        setQuickOpenOpen(true)
-        return
-      }
-
-      // ⌘W closes the focused file tab; otherwise it falls through to closing the terminal.
-      if (e.key === 'w' && document.activeElement?.closest('[data-editor-surface]')) {
+  const commandHandlers = useMemo(
+    () => ({
+      'workbench.openSettings': () => setSettingsOpen((v) => !v),
+      'workbench.toggleSidebar': toggleSidebar,
+      'workbench.toggleRightSidebar': toggleRightSidebar,
+      'workbench.togglePanel': toggleHomeTerminal,
+      'workbench.quickOpen': () => {
+        if (selectedProject) setQuickOpenOpen(true)
+      },
+      'workbench.closeEditor': () => {
+        if (!selectedProject) return
         const active = activeFileByProject[selectedProject.id]
         const file = openFiles.find(
           (f) => f.projectId === selectedProject.id && f.path === active
         )
-        if (file) {
-          e.preventDefault()
-          closeFile(file)
-          return
-        }
-      }
-
-      if (e.key === 't') {
-        e.preventDefault()
-        void createProjectTerminal(selectedProject.id)
-      } else if (e.key === 'w' && activeTerminalId) {
-        e.preventDefault()
+        if (file) closeFile(file)
+      },
+      'terminal.new': () => {
+        if (selectedProject) void createProjectTerminal(selectedProject.id)
+      },
+      'terminal.close': () => {
+        if (!selectedProject || !activeTerminalId) return
         void window.api.terminals.kill(activeTerminalId)
         window.api.terminals.removeRecord(selectedProject.id, activeTerminalId)
         removeTerminalLocal(selectedProject.id, activeTerminalId)
-      }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [
-    selectedProject,
-    quickOpenOpen,
-    removeTerminalLocal,
-    activeTerminalId,
-    toggleSidebar,
-    toggleRightSidebar,
-    toggleHomeTerminal,
-    openFiles,
-    closeFile,
-    activeFileByProject,
-  ])
+      },
+    }),
+    [
+      selectedProject,
+      activeTerminalId,
+      removeTerminalLocal,
+      toggleSidebar,
+      toggleRightSidebar,
+      toggleHomeTerminal,
+      openFiles,
+      closeFile,
+      activeFileByProject,
+    ]
+  )
+
+  useKeybindings({
+    bindings: DEFAULT_BINDINGS,
+    handlers: commandHandlers,
+    activeContexts: commandContexts,
+    // The quick-open palette owns the keyboard while it is open.
+    enabled: !quickOpenOpen,
+  })
 
   const handleBell = useCallback(
     (project: Project, terminal: TerminalRecord, kind: 'bell' | 'attention') => {
