@@ -193,6 +193,7 @@ export const IPC = {
     rename: 'fs:rename',
     remove: 'fs:remove',
     duplicate: 'fs:duplicate',
+    copy: 'fs:copy',
     open: 'fs:open',
     reveal: 'fs:reveal',
     saveTempPaste: 'fs:save-temp-paste',

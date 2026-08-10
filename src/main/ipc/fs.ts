@@ -228,6 +228,33 @@ export function registerFsIpc(): void {
   )
 
   ipcMain.handle(
+    IPC.fs.copy,
+    async (_e, projectId: ProjectId, fromRel: string, toRel: string): Promise<boolean> => {
+      const project = getProject(projectId)
+      if (!project) return false
+      const from = resolveSafe(project.path, fromRel)
+      const to = resolveSafe(project.path, toRel)
+      if (!from || !to || from === to) return false
+
+      // Refuse to copy a directory into its own subtree — cp would recurse
+      // into the destination it is still writing.
+      if (to === from || to.startsWith(from + sep)) return false
+
+      try {
+        await fs.mkdir(dirname(to), { recursive: true })
+        // `force: false` so an unexpected collision surfaces as an error
+        // instead of silently overwriting; the caller has already picked a
+        // free name.
+        await fs.cp(from, to, { recursive: true, force: false, errorOnExist: true })
+        return true
+      } catch (err) {
+        console.error('[fs] copy failed:', err)
+        return false
+      }
+    }
+  )
+
+  ipcMain.handle(
     IPC.fs.remove,
     async (_e, projectId: ProjectId, relPath: string): Promise<boolean> => {
       const project = getProject(projectId)

@@ -170,6 +170,8 @@ const api = {
       ipcRenderer.invoke(IPC.fs.remove, projectId, relPath),
     duplicate: (projectId: ProjectId, relPath: string): Promise<string | null> =>
       ipcRenderer.invoke(IPC.fs.duplicate, projectId, relPath),
+    copy: (projectId: ProjectId, fromRel: string, toRel: string): Promise<boolean> =>
+      ipcRenderer.invoke(IPC.fs.copy, projectId, fromRel, toRel),
     walk: (projectId: ProjectId): Promise<WalkResult> =>
       ipcRenderer.invoke(IPC.fs.walk, projectId),
     open: (projectId: ProjectId, relPath: string): Promise<boolean> =>

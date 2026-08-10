@@ -6,6 +6,7 @@ import { Codicon } from '../codicon'
 import { statusColor } from '@renderer/lib/git-status-color'
 import { dropFolderFor, planMoves, topMostPaths } from '@renderer/lib/file-tree-move'
 import { nextSelection, type SelectionState } from '@renderer/lib/file-tree-selection'
+import { planPaste, type ClipboardMode } from '@renderer/lib/file-tree-paste'
 
 interface Props {
   project: Project
@@ -47,9 +48,18 @@ export function FileTree({ project }: Props) {
         : { selection: new Set([path]), anchor: path }
     )
   }, [])
+  // Cut/copy clipboard. Cut entries render faded until the paste lands, the
+  // same feedback VS Code gives.
+  const [clipboard, setClipboard] = useState<{ paths: string[]; mode: ClipboardMode } | null>(null)
   const [draggingPath, setDraggingPath] = useState<string | null>(null)
   const [dropFolder, setDropFolder] = useState<string | null>(null)
   const typeAhead = useRef<{ buffer: string; at: number }>({ buffer: '', at: 0 })
+
+  // Only a pending CUT fades rows; a copy leaves the originals untouched.
+  const cutPaths = useMemo(
+    () => new Set(clipboard?.mode === 'cut' ? clipboard.paths : []),
+    [clipboard]
+  )
 
   const visibleRows = useMemo(
     () => flattenVisible(rootEntries, children, expanded),
@@ -200,6 +210,47 @@ export function FileTree({ project }: Props) {
         setRenaming(target.path)
         return
       }
+      if (action === 'cut' || action === 'clipboard-copy') {
+        // Acting on a row inside the selection takes the whole selection.
+        const paths = selectionState.selection.has(target.path)
+          ? [...selectionState.selection]
+          : [target.path]
+        setClipboard({ paths, mode: action === 'cut' ? 'cut' : 'copy' })
+        return
+      }
+
+      if (action === 'paste') {
+        if (!clipboard) return
+
+        // Paste lands inside a folder; on a file it lands beside it.
+        const destFolder = target.isDirectory ? target.path : parentOf(target.path)
+        const siblings = new Set(
+          (destFolder === '' ? rootEntries : (children[destFolder] ?? [])).map((e) => e.name)
+        )
+
+        const steps = planPaste(clipboard.paths, destFolder, clipboard.mode, siblings)
+        if (steps.length === 0) return
+
+        const touched = new Set<string>([destFolder])
+        for (const step of steps) {
+          const ok =
+            step.mode === 'move'
+              ? await window.api.fs.rename(project.id, step.from, step.to)
+              : await window.api.fs.copy(project.id, step.from, step.to)
+          if (ok && step.mode === 'move') touched.add(parentOf(step.from))
+        }
+
+        if (destFolder !== '' && !expanded[destFolder]) {
+          setExpanded((e) => ({ ...e, [destFolder]: true }))
+        }
+        for (const folder of touched) {
+          await reloadFolder(folder)
+        }
+        // A cut is consumed by its paste; a copy stays for repeat pastes.
+        if (clipboard.mode === 'cut') setClipboard(null)
+        return
+      }
+
       if (action === 'delete') {
         // Acting on a row inside the selection deletes the whole selection,
         // as in VS Code; acting on a row outside it deletes just that row.
@@ -227,7 +278,7 @@ export function FileTree({ project }: Props) {
         return
       }
     },
-    [expanded, toggle, project.id, project.path, project.name, reloadFolder, reloadGit, openFile, selectionState]
+    [expanded, toggle, project.id, project.path, project.name, reloadFolder, reloadGit, openFile, selectionState, clipboard, rootEntries, children]
   )
 
   const submitCreate = useCallback(
@@ -283,6 +334,18 @@ export function FileTree({ project }: Props) {
       const idx = visibleRows.findIndex((r) => r.path === cursorPath)
       const cur = idx >= 0 ? visibleRows[idx] : null
       switch (e.key) {
+        case 'x':
+        case 'X':
+        case 'c':
+        case 'C':
+        case 'v':
+        case 'V': {
+          if (!(e.metaKey || e.ctrlKey) || !cur) return
+          e.preventDefault()
+          const key = e.key.toLowerCase()
+          void handleAction(cur, key === 'x' ? 'cut' : key === 'c' ? 'clipboard-copy' : 'paste')
+          return
+        }
         case 'ArrowDown':
         case 'ArrowUp': {
           e.preventDefault()
@@ -451,6 +514,7 @@ export function FileTree({ project }: Props) {
             creatingAt={creatingAt}
             draggingPath={draggingPath}
             dropFolder={dropFolder}
+            cutPaths={cutPaths}
             onDragStartRow={(e) => setDraggingPath(e.path)}
             onDragOverRow={(e) => setDropFolder(dropFolderFor(e))}
             onDropRow={(e) => void handleDropOn(e)}
@@ -503,6 +567,7 @@ export function FileTree({ project }: Props) {
           x={menu.x}
           y={menu.y}
           target={menu.target}
+          canPaste={clipboard !== null && menu.target !== null}
           onClose={() => setMenu(null)}
           onAction={(action) => void handleAction(menu.target, action)}
         />
@@ -544,6 +609,8 @@ interface TreeRowProps {
   activePath: string | null
   draggingPath: string | null
   dropFolder: string | null
+  /** Paths staged for a cut — rendered faded until the paste lands. */
+  cutPaths: ReadonlySet<string>
   onDragStartRow: (entry: FsEntry) => void
   onDragOverRow: (entry: FsEntry) => void
   onDropRow: (entry: FsEntry) => void
@@ -569,6 +636,7 @@ function TreeRow({
   activePath,
   draggingPath,
   dropFolder,
+  cutPaths,
   onDragStartRow,
   onDragOverRow,
   onDropRow,
@@ -586,6 +654,7 @@ function TreeRow({
   const isActive = !entry.isDirectory && activePath === entry.path
   const isSelected = selection.has(entry.path)
   const isDragging = draggingPath === entry.path
+  const isCut = cutPaths.has(entry.path)
   // Highlight the folder a drop would land in — the row itself when it is a
   // directory, otherwise the containing folder shown via its own row.
   const isDropTarget =
@@ -635,6 +704,7 @@ function TreeRow({
             isSelected ? 'ring-1 ring-inset ring-accent/40' : '',
             isDropTarget ? 'bg-accent/20 ring-1 ring-inset ring-accent/60' : '',
             isDragging ? 'opacity-40' : '',
+            isCut ? 'opacity-50' : '',
           ].join(' ')}
           style={{ paddingLeft: 8 + depth * 12 }}
         >
@@ -718,6 +788,7 @@ function TreeRow({
                 activePath={activePath}
                 draggingPath={draggingPath}
                 dropFolder={dropFolder}
+                cutPaths={cutPaths}
                 onDragStartRow={onDragStartRow}
                 onDragOverRow={onDragOverRow}
                 onDropRow={onDropRow}
@@ -825,6 +896,9 @@ type ActionKey =
   | 'open-terminal'
   | 'copy-path'
   | 'copy-relative-path'
+  | 'cut'
+  | 'clipboard-copy'
+  | 'paste'
 interface MenuState {
   x: number
   y: number
@@ -835,12 +909,15 @@ function ContextMenu({
   x,
   y,
   target,
+  canPaste,
   onClose,
   onAction,
 }: {
   x: number
   y: number
   target: FsEntry | null
+  /** Whether the clipboard holds anything to paste. */
+  canPaste: boolean
   onClose: () => void
   onAction: (a: ActionKey) => void
 }) {
@@ -873,6 +950,14 @@ function ContextMenu({
       <MenuItem onClick={() => onAction('new-folder')}>New folder</MenuItem>
       {target && (
         <>
+          <MenuItem onClick={() => onAction('cut')}>Cut</MenuItem>
+          <MenuItem onClick={() => onAction('clipboard-copy')}>Copy</MenuItem>
+        </>
+      )}
+      {canPaste && <MenuItem onClick={() => onAction('paste')}>Paste</MenuItem>}
+      {target && (
+        <>
+          <MenuDivider />
           <MenuItem onClick={() => onAction('duplicate')}>Duplicate</MenuItem>
           <MenuItem onClick={() => onAction('rename')}>Rename</MenuItem>
           <MenuItem onClick={() => onAction('delete')} danger>
