@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useKeybindings } from '@renderer/hooks/use-keybindings'
+import { useKeybindings, type CommandHandlers } from '@renderer/hooks/use-keybindings'
 import { CONTEXT, DEFAULT_BINDINGS } from '@renderer/lib/commands'
+import { CommandPalette } from '@renderer/components/command-palette'
 import { ProjectList } from './components/sidebar/project-list'
 import { RightSidebar } from './components/right-sidebar/right-sidebar'
 import { RightActivityBar } from './components/right-activity-bar'
@@ -179,6 +180,8 @@ export default function App() {
   // than a chain of hand-rolled key checks, so they are declared in one table
   // and can be rebound. Widget-local keys (Esc, Enter, arrows) stay with their
   // widgets, as in VS Code.
+  const [paletteOpen, setPaletteOpen] = useState(false)
+
   const commandContexts = useMemo(() => {
     const active = new Set<string>()
     if (document.activeElement?.closest('[data-editor-surface]')) {
@@ -189,12 +192,13 @@ export default function App() {
     return active
   }, [activeTerminalId, quickOpenOpen])
 
-  const commandHandlers = useMemo(
+  const commandHandlers: CommandHandlers = useMemo(
     () => ({
       'workbench.openSettings': () => setSettingsOpen((v) => !v),
       'workbench.toggleSidebar': toggleSidebar,
       'workbench.toggleRightSidebar': toggleRightSidebar,
       'workbench.togglePanel': toggleHomeTerminal,
+      'workbench.commandPalette': () => setPaletteOpen(true),
       'workbench.quickOpen': () => {
         if (selectedProject) setQuickOpenOpen(true)
       },
@@ -234,7 +238,7 @@ export default function App() {
     handlers: commandHandlers,
     activeContexts: commandContexts,
     // The quick-open palette owns the keyboard while it is open.
-    enabled: !quickOpenOpen,
+    enabled: !quickOpenOpen && !paletteOpen,
   })
 
   const handleBell = useCallback(
@@ -359,6 +363,12 @@ export default function App() {
       {selectedProject && selectedHasOpenFiles && editorViewMode !== 'docked' && (
         <EditorOverlay projectId={selectedProject.id} />
       )}
+      <CommandPalette
+        open={paletteOpen}
+        available={new Set(Object.keys(commandHandlers))}
+        onRun={(id) => commandHandlers[id]?.()}
+        onClose={() => setPaletteOpen(false)}
+      />
       <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       {selectedProject && (
         <QuickOpen

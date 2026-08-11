@@ -72,6 +72,7 @@ export const DEFAULT_BINDINGS: CommandBinding[] = [
   { command: 'workbench.toggleRightSidebar', chord: 'mod+shift+b' },
   { command: 'workbench.togglePanel', chord: 'mod+j' },
   { command: 'workbench.quickOpen', chord: 'mod+p' },
+  { command: 'workbench.commandPalette', chord: 'mod+shift+p' },
   { command: 'workbench.openSettings', chord: 'mod+,' },
   { command: 'terminal.new', chord: 'mod+t' },
   { command: 'terminal.close', chord: 'mod+w', when: CONTEXT.terminalFocus },
@@ -81,3 +82,31 @@ export const DEFAULT_BINDINGS: CommandBinding[] = [
   { command: 'explorer.paste', chord: 'mod+v', when: CONTEXT.explorerFocus },
   { command: 'explorer.newFile', chord: 'mod+n', when: CONTEXT.explorerFocus },
 ]
+
+/**
+ * Titles for the command palette.
+ *
+ * Kept beside the bindings so a command cannot gain a shortcut without also
+ * being discoverable, which is the failure mode of a palette bolted on later.
+ */
+export const COMMAND_CATALOGUE: { id: string; category: string; title: string }[] = [
+  { id: 'workbench.toggleSidebar', category: 'View', title: 'Toggle Primary Side Bar' },
+  { id: 'workbench.toggleRightSidebar', category: 'View', title: 'Toggle Secondary Side Bar' },
+  { id: 'workbench.togglePanel', category: 'View', title: 'Toggle Panel' },
+  { id: 'workbench.quickOpen', category: 'Go', title: 'Go to File…' },
+  { id: 'workbench.commandPalette', category: 'View', title: 'Show All Commands' },
+  { id: 'workbench.openSettings', category: 'Preferences', title: 'Open Settings' },
+  { id: 'workbench.closeEditor', category: 'View', title: 'Close Editor' },
+  { id: 'terminal.new', category: 'Terminal', title: 'Create New Terminal' },
+  { id: 'terminal.close', category: 'Terminal', title: 'Kill Active Terminal' },
+]
+
+/** The chord bound to a command, or null when it has none. */
+export function chordForCommand(
+  command: string,
+  bindings: readonly CommandBinding[] = DEFAULT_BINDINGS
+): string | null {
+  // Last match wins, mirroring how overrides resolve.
+  const found = [...bindings].reverse().find((b) => b.command === command)
+  return found?.chord ?? null
+}
