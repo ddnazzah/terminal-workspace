@@ -1,6 +1,7 @@
 import { useWorkspace } from '@renderer/state/store'
 import { EditorChrome } from './editor-chrome'
 import { FileTabs } from './file-tabs'
+import { Breadcrumbs } from './breadcrumbs'
 import { FileViewer } from './file-viewer'
 
 interface Props {
@@ -31,6 +32,7 @@ export function EditorShell({ projectId, onClose }: Props) {
         </div>
         <EditorChrome onClose={onClose} />
       </div>
+      <Breadcrumbs projectId={projectId} />
       <div className="flex-1 min-h-0">
         <FileViewer projectId={projectId} />
       </div>
