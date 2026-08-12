@@ -4,7 +4,7 @@
 
 import { spawn } from 'node:child_process'
 import { promises as fs } from 'node:fs'
-import { join } from 'node:path'
+import { isAbsolute, join } from 'node:path'
 import { branchForCard, worktreeDirName, worktreeRootFor } from './worktree-path'
 
 interface RunResult {
@@ -100,6 +100,35 @@ export async function allocateWorktree(
   return {
     ok: true,
     allocation: { cwd: path, worktreePath: path, branch, note: `worktree ${path} on ${branch}` },
+  }
+}
+
+/**
+ * Keep wTerm's dispatch artefact out of `git status` via local excludes, never
+ * the tracked .gitignore.
+ *
+ * The exclude file must go in the repo's *common* dir: a linked worktree's own
+ * gitdir has an `info/` that git does not consult, so writing there looks right
+ * and silently does nothing. `--git-common-dir` resolves to the shared `.git`
+ * for a worktree and to the plain `.git` for an ordinary checkout.
+ */
+export async function excludeFromGitStatus(cwd: string, pattern: string): Promise<void> {
+  const res = await git(['rev-parse', '--git-common-dir'], cwd)
+  if (res.code !== 0) return
+
+  const raw = res.stdout.trim()
+  if (!raw) return
+  const commonDir = isAbsolute(raw) ? raw : join(cwd, raw)
+  const infoDir = join(commonDir, 'info')
+  const excludePath = join(infoDir, 'exclude')
+
+  try {
+    const current = await fs.readFile(excludePath, 'utf-8').catch(() => '')
+    if (current.split('\n').some((line) => line.trim() === pattern)) return
+    await fs.mkdir(infoDir, { recursive: true })
+    await fs.writeFile(excludePath, `${current.replace(/\n*$/, '\n')}${pattern}\n`, 'utf-8')
+  } catch {
+    // Never fatal — without it the card file merely shows as untracked.
   }
 }
 

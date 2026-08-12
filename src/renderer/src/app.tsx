@@ -5,6 +5,7 @@ import { RightActivityBar } from './components/right-activity-bar'
 import { TerminalPane } from './components/workspace/terminal-pane'
 import { EmptyState } from './components/workspace/empty-state'
 import { SettingsModal } from './components/settings-modal'
+import { ConfirmDialog } from './components/confirm-dialog'
 import { UpdateBanner } from './components/update-banner'
 import { TopBar } from './components/top-bar'
 import { StatusBar } from './components/status-bar'
@@ -13,14 +14,16 @@ import { EditorOverlay } from './components/workspace/editor-surface'
 import { BottomPanel } from './components/workspace/bottom-panel'
 import { useProjects } from './hooks/use-projects'
 import { useWindowZoom } from './lib/zoom'
-import { createProjectTerminal, useWorkspace } from '@renderer/state/store'
+import { closeProjectTerminal, createProjectTerminal, useWorkspace } from '@renderer/state/store'
 import { BOARD_TAB_PATH, NOTES_TAB_PATH } from '@renderer/lib/tab-uri'
 import { stripSpinner } from '@shared/terminal-title'
 import { HOME_PROJECT_ID, type ActivityStatus, type Project, type TerminalRecord } from '@shared/types'
 
 export default function App() {
   const { projects, selectedProject, addProject } = useProjects()
-  const removeTerminalLocal = useWorkspace((s) => s.removeTerminalLocal)
+  const requestTerminalClose = useWorkspace((s) => s.requestTerminalClose)
+  const pendingTerminalClose = useWorkspace((s) => s.pendingTerminalClose)
+  const clearPendingTerminalClose = useWorkspace((s) => s.clearPendingTerminalClose)
   const activeTerminalByProject = useWorkspace((s) => s.activeTerminalByProject)
   const selectProject = useWorkspace((s) => s.selectProject)
   const setActiveTerminal = useWorkspace((s) => s.setActiveTerminal)
@@ -210,16 +213,14 @@ export default function App() {
         void createProjectTerminal(selectedProject.id)
       } else if (e.key === 'w' && activeTerminalId) {
         e.preventDefault()
-        void window.api.terminals.kill(activeTerminalId)
-        window.api.terminals.removeRecord(selectedProject.id, activeTerminalId)
-        removeTerminalLocal(selectedProject.id, activeTerminalId)
+        requestTerminalClose(selectedProject.id, activeTerminalId)
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [
     selectedProject,
-    removeTerminalLocal,
+    requestTerminalClose,
     activeTerminalId,
     toggleSidebar,
     toggleRightSidebar,
@@ -355,6 +356,29 @@ export default function App() {
         <EditorOverlay projectId={selectedProject.id} />
       )}
       <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <ConfirmDialog
+        open={!!pendingTerminalClose}
+        title="Close terminal?"
+        message={
+          <>
+            Close{' '}
+            <span className="text-foreground/90 font-medium">{pendingTerminalClose?.label}</span>?
+            This ends the shell and anything running in it.
+          </>
+        }
+        confirmLabel="Close"
+        danger
+        onConfirm={() => {
+          if (pendingTerminalClose) {
+            void closeProjectTerminal(
+              pendingTerminalClose.projectId,
+              pendingTerminalClose.terminalId
+            )
+          }
+          clearPendingTerminalClose()
+        }}
+        onCancel={clearPendingTerminalClose}
+      />
       <UpdateBanner />
     </div>
   )

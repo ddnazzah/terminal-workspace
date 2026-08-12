@@ -2,11 +2,11 @@
 // likely to be wrong in a way unit tests can't see.
 
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { allocateWorktree, isWorktreeDirty, pruneWorktree } from './worktree'
+import { allocateWorktree, excludeFromGitStatus, isWorktreeDirty, pruneWorktree } from './worktree'
 
 let root: string
 let repo: string
@@ -89,6 +89,53 @@ describe('allocateWorktree', () => {
     expect(result.allocation.cwd).toBe(plain)
     expect(result.allocation.worktreePath).toBeNull()
     expect(result.allocation.note).toContain('not a git repo')
+    rmSync(plain, { recursive: true, force: true })
+  })
+})
+
+describe('excludeFromGitStatus', () => {
+  function statusOf(cwd: string): string {
+    return spawnSync('git', ['status', '--porcelain'], { cwd, encoding: 'utf-8' }).stdout
+  }
+
+  // Regression: writing the exclude into a linked worktree's OWN gitdir looks
+  // correct and silently does nothing — git only consults the common dir.
+  it('actually hides the pattern inside a linked worktree', async () => {
+    const result = await allocateWorktree(repo, 'proj', 9, '')
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const path = result.allocation.worktreePath as string
+    spawnSync('mkdir', ['-p', join(path, '.wterm')])
+    writeFileSync(join(path, '.wterm', 'card-9.md'), '# card')
+    expect(statusOf(path)).toContain('.wterm/')
+
+    await excludeFromGitStatus(path, '.wterm/')
+
+    expect(statusOf(path)).toBe('')
+  })
+
+  it('hides the pattern in an ordinary checkout too', async () => {
+    writeFileSync(join(repo, 'scratch.tmp'), 'x')
+    expect(statusOf(repo)).toContain('scratch.tmp')
+
+    await excludeFromGitStatus(repo, 'scratch.tmp')
+
+    expect(statusOf(repo)).toBe('')
+  })
+
+  it('does not duplicate a pattern that is already excluded', async () => {
+    await excludeFromGitStatus(repo, '.wterm/')
+    await excludeFromGitStatus(repo, '.wterm/')
+
+    const exclude = readFileSync(join(repo, '.git', 'info', 'exclude'), 'utf-8')
+    expect(exclude.split('\n').filter((l) => l.trim() === '.wterm/')).toHaveLength(1)
+  })
+
+  it('is a no-op outside a git repo rather than throwing', async () => {
+    const plain = mkdtempSync(join(tmpdir(), 'wterm-plain-'))
+
+    await expect(excludeFromGitStatus(plain, '.wterm/')).resolves.toBeUndefined()
+
     rmSync(plain, { recursive: true, force: true })
   })
 })

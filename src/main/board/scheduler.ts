@@ -26,7 +26,7 @@ import {
   patchCardRun,
   setCardRun,
 } from './store'
-import { allocateWorktree } from './worktree'
+import { allocateWorktree, excludeFromGitStatus } from './worktree'
 
 /** Directory inside a worktree holding the dispatched card's markdown. */
 const CARD_DIR = '.wterm'
@@ -136,7 +136,7 @@ export class BoardScheduler {
     try {
       await fs.mkdir(join(cwd, CARD_DIR), { recursive: true })
       await fs.writeFile(join(cwd, cardFile), renderCardFile(card), 'utf-8')
-      await excludeCardDir(cwd)
+      await excludeFromGitStatus(cwd, `${CARD_DIR}/`)
     } catch (err: unknown) {
       this.failDispatch(card.id, `dispatch failed writing the card file: ${String(err)}`)
       return
@@ -256,32 +256,3 @@ function renderCardFile(card: Card): string {
   return `# #${card.number} ${card.title}\n\n${card.body}\n`
 }
 
-/**
- * Keep the dispatch artefact out of `git status` via the worktree's local
- * excludes, never the tracked .gitignore. In a linked worktree `.git` is a file
- * pointing at the real gitdir, so this is best-effort by design.
- */
-async function excludeCardDir(cwd: string): Promise<void> {
-  try {
-    const gitPath = join(cwd, '.git')
-    const stat = await fs.stat(gitPath)
-    if (!stat.isDirectory()) {
-      const pointer = await fs.readFile(gitPath, 'utf-8')
-      const match = /^gitdir:\s*(.+)$/m.exec(pointer)
-      if (!match) return
-      await writeExclude(join(match[1].trim(), 'info'))
-      return
-    }
-    await writeExclude(join(gitPath, 'info'))
-  } catch {
-    // Never fatal — a missing exclude only means the card file shows as untracked.
-  }
-}
-
-async function writeExclude(infoDir: string): Promise<void> {
-  const excludePath = join(infoDir, 'exclude')
-  const current = await fs.readFile(excludePath, 'utf-8').catch(() => '')
-  if (current.includes(`${CARD_DIR}/`)) return
-  await fs.mkdir(infoDir, { recursive: true })
-  await fs.writeFile(excludePath, `${current}\n${CARD_DIR}/\n`, 'utf-8')
-}

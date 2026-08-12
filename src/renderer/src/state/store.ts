@@ -1,6 +1,11 @@
 import { create } from 'zustand'
 import { HOME_PROJECT_ID } from '@shared/types'
 import type { Project, ProjectId, TerminalId, TerminalRecord } from '@shared/types'
+import {
+  pendingCloseAfterRemoval,
+  resolveCloseLabel,
+  type PendingTerminalClose,
+} from './pending-close'
 import { useSettings } from './settings'
 
 export const SIDEBAR_MIN_WIDTH = 180
@@ -151,6 +156,8 @@ interface WorkspaceState {
   busyByTerminal: Record<TerminalId, boolean>
   /** Terminals whose agent finished a turn and is waiting on the user (red cue). */
   attentionByTerminal: Record<TerminalId, boolean>
+  /** Terminal awaiting close confirmation; null when no dialog is open. */
+  pendingTerminalClose: PendingTerminalClose | null
 
   sidebarWidth: number
   sidebarCollapsed: boolean
@@ -232,6 +239,10 @@ interface WorkspaceState {
   setTerminalBusy: (terminalId: TerminalId, busy: boolean) => void
   setTerminalAttention: (terminalId: TerminalId, attention: boolean) => void
   clearAttention: (terminalId: TerminalId) => void
+
+  /** Open the close-confirmation dialog for a terminal. */
+  requestTerminalClose: (projectId: ProjectId, terminalId: TerminalId) => void
+  clearPendingTerminalClose: () => void
 }
 
 export const useWorkspace = create<WorkspaceState>((set) => ({
@@ -243,6 +254,7 @@ export const useWorkspace = create<WorkspaceState>((set) => ({
   titleByTerminal: {},
   busyByTerminal: {},
   attentionByTerminal: {},
+  pendingTerminalClose: null,
 
   sidebarWidth: readInitialSidebarWidth(),
   sidebarCollapsed: readInitialSidebarCollapsed(),
@@ -619,6 +631,11 @@ export const useWorkspace = create<WorkspaceState>((set) => ({
         titleByTerminal: titleRest,
         busyByTerminal: busyRest,
         attentionByTerminal: attnRest,
+        // The shell can exit on its own while the confirm dialog is open.
+        pendingTerminalClose: pendingCloseAfterRemoval(state.pendingTerminalClose, {
+          projectId,
+          terminalId,
+        }),
       }
     })
     if (nextActive !== undefined) {
@@ -744,6 +761,23 @@ export const useWorkspace = create<WorkspaceState>((set) => ({
       const { [terminalId]: _omitted, ...rest } = state.attentionByTerminal
       return { attentionByTerminal: rest }
     }),
+
+  requestTerminalClose: (projectId, terminalId) =>
+    set((state) => {
+      const label = resolveCloseLabel(
+        state.projects,
+        state.titleByTerminal,
+        projectId,
+        terminalId
+      )
+      // Already gone (the shell exited between click and dispatch): nothing to
+      // confirm, and prompting about a terminal that no longer exists is worse
+      // than staying silent.
+      if (label === null) return state
+      return { pendingTerminalClose: { projectId, terminalId, label } }
+    }),
+
+  clearPendingTerminalClose: () => set({ pendingTerminalClose: null }),
 }))
 
 /**
@@ -765,6 +799,21 @@ export async function createProjectTerminal(
   const record = await window.api.terminals.create({ projectId, startupCommand, ...opts })
   if (record) useWorkspace.getState().addTerminal(projectId, record)
   return record
+}
+
+/**
+ * Kill a terminal and drop its record everywhere — the mirror of
+ * {@link createProjectTerminal}, and the single funnel every close path runs
+ * through once the user has confirmed. Safe to call for a terminal that has
+ * already exited: `removeTerminalLocal` tolerates a missing terminal.
+ */
+export async function closeProjectTerminal(
+  projectId: ProjectId,
+  terminalId: TerminalId
+): Promise<void> {
+  await window.api.terminals.kill(terminalId)
+  window.api.terminals.removeRecord(projectId, terminalId)
+  useWorkspace.getState().removeTerminalLocal(projectId, terminalId)
 }
 
 // Dev-only: editing this module hot-swaps it, which makes `create()` build a new

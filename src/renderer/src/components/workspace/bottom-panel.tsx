@@ -23,7 +23,7 @@ export function BottomPanel({ home, onBell }: Props) {
   const toggle = useWorkspace((s) => s.toggleBottomPanel)
   const activeId = useWorkspace((s) => s.activeTerminalByProject[HOME_PROJECT_ID] ?? null)
   const setActive = useWorkspace((s) => s.setActiveTerminal)
-  const removeTerminalLocal = useWorkspace((s) => s.removeTerminalLocal)
+  const requestTerminalClose = useWorkspace((s) => s.requestTerminalClose)
   const titleByTerminal = useWorkspace((s) => s.titleByTerminal)
   const unreadByTerminal = useWorkspace((s) => s.unreadByTerminal)
   const busyByTerminal = useWorkspace((s) => s.busyByTerminal)
@@ -55,9 +55,7 @@ export function BottomPanel({ home, onBell }: Props) {
   }, [])
 
   const closeTerminal = (id: string): void => {
-    void window.api.terminals.kill(id)
-    window.api.terminals.removeRecord(HOME_PROJECT_ID, id)
-    removeTerminalLocal(HOME_PROJECT_ID, id)
+    requestTerminalClose(HOME_PROJECT_ID, id)
   }
 
   const terminals = home.terminals
