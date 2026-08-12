@@ -3,6 +3,7 @@ import { HOME_PROJECT_ID } from '@shared/types'
 import type { Project, ProjectId, TerminalId, TerminalRecord } from '@shared/types'
 import { applyRename, type NameSource } from '@shared/rename'
 import { useSettings } from './settings'
+import { modalSizeFor, clampModalSize } from '@renderer/lib/modal-size'
 
 export const SIDEBAR_MIN_WIDTH = 180
 export const SIDEBAR_MAX_WIDTH = 480
@@ -36,16 +37,21 @@ const readDockSplitRatio = (): number => {
 }
 
 const readInitialFileModalSize = (): { width: number; height: number } => {
+  let saved: { width: number; height: number } | null = null
   try {
     const raw = localStorage.getItem(FILE_MODAL_SIZE_KEY)
     if (raw) {
       const parsed = JSON.parse(raw) as { width: number; height: number }
-      if (parsed?.width && parsed?.height) return parsed
+      if (parsed?.width && parsed?.height) saved = parsed
     }
   } catch {
     // ignore
   }
-  return { width: 900, height: 600 }
+
+  // Proportional to the viewport rather than a fixed 900x600, so a larger
+  // display gets a larger editor. A saved size is respected but clamped to
+  // fit, and grown when it is a leftover from a much smaller screen.
+  return modalSizeFor({ width: window.innerWidth, height: window.innerHeight }, saved)
 }
 
 export type RightSidebarTab = 'files' | 'git'
@@ -335,8 +341,12 @@ export const useWorkspace = create<WorkspaceState>((set) => ({
   openFileModal: () => set({ fileModalOpen: true }),
   closeFileModal: () => set({ fileModalOpen: false }),
   setFileModalSize: (width, height) => {
-    const w = Math.max(420, Math.min(width, window.innerWidth - 80))
-    const h = Math.max(300, Math.min(height, window.innerHeight - 80))
+    // clampModalSize, not modalSizeFor: an explicit drag must never be grown
+    // back to the proportional default.
+    const { width: w, height: h } = clampModalSize(
+      { width: window.innerWidth, height: window.innerHeight },
+      { width, height }
+    )
     set({ fileModalWidth: w, fileModalHeight: h })
     try {
       localStorage.setItem(FILE_MODAL_SIZE_KEY, JSON.stringify({ width: w, height: h }))

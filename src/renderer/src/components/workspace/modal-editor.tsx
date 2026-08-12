@@ -25,6 +25,16 @@ export function ModalEditor({ projectId, onClose }: Props) {
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
+  // Re-fit when the window changes size — moving to another display, or
+  // resizing the window, should not leave the modal stuck at the old geometry.
+  useEffect(() => {
+    const onResize = (): void => {
+      setSize(width, height)
+    }
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [width, height, setSize])
+
   const onResizeDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault()
     e.stopPropagation()
