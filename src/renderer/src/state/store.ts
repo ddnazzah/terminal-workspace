@@ -54,7 +54,7 @@ const readInitialFileModalSize = (): { width: number; height: number } => {
   return modalSizeFor({ width: window.innerWidth, height: window.innerHeight }, saved)
 }
 
-export type RightSidebarTab = 'files' | 'git'
+export type RightSidebarTab = 'files' | 'git' | 'search'
 
 export interface OpenedFile {
   projectId: string
@@ -142,7 +142,7 @@ const readInitialBottomPanelOpen = (): boolean => {
 const readInitialRightSidebarTab = (): RightSidebarTab => {
   try {
     const raw = localStorage.getItem(RIGHT_SIDEBAR_TAB_KEY)
-    return raw === 'git' ? 'git' : 'files'
+    return raw === 'git' || raw === 'search' ? raw : 'files'
   } catch {
     return 'files'
   }

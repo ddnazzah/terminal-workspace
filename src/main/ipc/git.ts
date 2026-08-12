@@ -7,12 +7,15 @@ import {
   type GitStatusEntry,
   type ProjectId,
   type RepoRef,
+  type SearchHit,
 } from '@shared/types'
 import { getProject } from '../store/state'
 import { discoverRepos, findRepo } from '../git/discover'
 import {
   commitStaged,
   fileAtRev,
+  searchFiles,
+  type SearchOptions,
   discardPaths,
   getGitInfo,
   getStatusEntries,
@@ -125,6 +128,20 @@ export function registerGitIpc(): void {
     ): Promise<string | null> => {
       const cwd = repoCwd(projectId, repoRel)
       return cwd ? fileAtRev(cwd, relPath, rev) : null
+    }
+  )
+
+  ipcMain.handle(
+    IPC.git.search,
+    async (
+      _e,
+      projectId: ProjectId,
+      repoRel: string,
+      query: string,
+      options: SearchOptions
+    ): Promise<{ hits: SearchHit[]; truncated: boolean }> => {
+      const cwd = repoCwd(projectId, repoRel)
+      return cwd ? searchFiles(cwd, query, options) : { hits: [], truncated: false }
     }
   )
 

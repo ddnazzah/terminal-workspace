@@ -210,6 +210,7 @@ export const IPC = {
     discard: 'git:discard',
     commit: 'git:commit',
     fileAtRev: 'git:file-at-rev',
+    search: 'git:search',
   },
   github: {
     getSettings: 'github:get-settings',
@@ -327,6 +328,18 @@ export interface FsEntry {
 }
 
 /** Flat list of project files for quick-open, with a truncation flag. */
+/** One matching line from a project-wide search. */
+export interface SearchHit {
+  /** Project-relative path, forward slashes. */
+  path: string
+  /** 1-based line number. */
+  line: number
+  /** 1-based column of the match. */
+  column: number
+  /** The full matched line, indentation preserved. */
+  text: string
+}
+
 export interface WalkResult {
   /** Project-root-relative paths, forward slashes, files only. */
   files: string[]

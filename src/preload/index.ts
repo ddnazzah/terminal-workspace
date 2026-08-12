@@ -21,6 +21,7 @@ import {
   type GitStatusEntry,
   type MediaPayload,
   type RepoRef,
+  type SearchHit,
   type TerminalDataPayload,
   type TerminalExitPayload,
   type SessionActivityPayload,
@@ -214,6 +215,13 @@ const api = {
       message: string
     ): Promise<{ ok: boolean; output: string }> =>
       ipcRenderer.invoke(IPC.git.commit, projectId, repoRel, message),
+    search: (
+      projectId: ProjectId,
+      repoRel: string,
+      query: string,
+      options: { caseSensitive?: boolean; regex?: boolean; wholeWord?: boolean }
+    ): Promise<{ hits: SearchHit[]; truncated: boolean }> =>
+      ipcRenderer.invoke(IPC.git.search, projectId, repoRel, query, options),
     fileAtRev: (
       projectId: ProjectId,
       repoRel: string,

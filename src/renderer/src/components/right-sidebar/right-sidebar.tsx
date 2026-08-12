@@ -7,6 +7,7 @@ import {
 import type { Project } from '@shared/types'
 import { FileTree } from './file-tree'
 import { GitPanel } from './git-panel'
+import { SearchPanel } from './search-panel'
 
 interface Props {
   project: Project
@@ -67,12 +68,14 @@ export function RightSidebar({ project }: Props) {
       <div className="flex flex-col h-full w-full rounded-lg bg-background overflow-hidden">
         <header className="app-titlebar h-11 flex items-center px-4">
           <span className="text-[10px] uppercase tracking-wider text-foreground/55 font-medium">
-            {tab === 'files' ? 'Files' : 'Source Control'}
+            {tab === 'files' ? 'Files' : tab === 'search' ? 'Search' : 'Source Control'}
           </span>
         </header>
 
         <div className="flex-1 min-h-0 overflow-hidden">
-          {tab === 'files' ? (
+          {tab === 'search' ? (
+            <SearchPanel projectId={project.id} />
+          ) : tab === 'files' ? (
             <FileTree project={project} />
           ) : (
             // Keyed so in-flight git work (e.g. a push) from a previous project

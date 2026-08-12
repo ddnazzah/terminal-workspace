@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import type { GitFileStatusMap, GitInfo, GitStatusEntry } from '@shared/types'
 import { parsePorcelainStatus } from './parse-status'
 import { parseStatusEntries } from './parse-status-entries'
+import { parseGrepOutput, type SearchHit } from './parse-grep'
 
 interface RunResult {
   code: number
@@ -207,4 +208,43 @@ export async function fileAtRev(
   const spec = rev === 'index' ? `:${relPath}` : `HEAD:${relPath}`
   const res = await git(['show', spec], cwd)
   return res.code === 0 ? res.stdout : null
+}
+
+/** Cap on returned hits — a broad query in a big repo can match tens of thousands. */
+const MAX_SEARCH_HITS = 2000
+
+export interface SearchOptions {
+  caseSensitive?: boolean
+  /** Treat the query as a regular expression rather than a literal string. */
+  regex?: boolean
+  wholeWord?: boolean
+}
+
+/**
+ * Search tracked files for `query` using `git grep`.
+ *
+ * git grep is used rather than a hand-rolled walk because it already honours
+ * .gitignore, skips binaries (-I), and is dramatically faster on large repos.
+ * Untracked-but-not-ignored files are included via --untracked so a brand-new
+ * file is still searchable.
+ */
+export async function searchFiles(
+  cwd: string,
+  query: string,
+  options: SearchOptions = {}
+): Promise<{ hits: SearchHit[]; truncated: boolean }> {
+  if (query.trim() === '') return { hits: [], truncated: false }
+
+  const args = ['grep', '--no-color', '-n', '--column', '-I', '-z', '--untracked']
+  if (!options.caseSensitive) args.push('-i')
+  if (!options.regex) args.push('-F') // fixed string
+  if (options.wholeWord) args.push('-w')
+  args.push('-e', query)
+
+  const res = await git(args, cwd)
+  // git grep exits 1 when there are simply no matches.
+  if (res.code !== 0 && res.stdout === '') return { hits: [], truncated: false }
+
+  const all = parseGrepOutput(res.stdout)
+  return { hits: all.slice(0, MAX_SEARCH_HITS), truncated: all.length > MAX_SEARCH_HITS }
 }
