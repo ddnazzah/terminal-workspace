@@ -58,6 +58,34 @@ function optionsFrom(s: EditorSettings): monaco.editor.IStandaloneEditorConstruc
     minimap: { enabled: s.minimap },
     automaticLayout: true,
     scrollBeyondLastLine: false,
+
+    // Defaults lifted from VS Code's own editor config so the editing surface
+    // behaves like the real thing rather than bare Monaco. Sources:
+    //   src/vs/editor/common/config/editorOptions.ts
+    //   src/vs/editor/common/core/misc/textModelDefaults.ts
+
+    // EditorStickyScroll defaults: enabled, maxLineCount 5, scrollWithEditor.
+    stickyScroll: { enabled: true, maxLineCount: 5, scrollWithEditor: true },
+
+    // EDITOR_MODEL_DEFAULTS.bracketPairColorizationOptions.
+    bracketPairColorization: { enabled: true, independentColorPoolPerBracketType: false },
+
+    // InternalGuidesOptions defaults — note bracketPairs is off but the ACTIVE
+    // pair is still highlighted, which is what makes nesting readable without
+    // the full rainbow of guides.
+    guides: {
+      bracketPairs: false,
+      bracketPairsHorizontal: 'active',
+      highlightActiveBracketPair: true,
+      indentation: true,
+      highlightActiveIndentation: true,
+    },
+
+    // detectIndentation is on in VS Code, so a file that uses tabs keeps them
+    // regardless of the configured default.
+    detectIndentation: true,
+    trimAutoWhitespace: true,
+    largeFileOptimizations: true,
   }
 }
 
