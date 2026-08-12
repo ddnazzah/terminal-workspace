@@ -45,6 +45,11 @@ interface PtyEntry {
   desktopSize: { cols: number; rows: number }
   /** True while a connected phone is the size authority for this terminal. */
   bridgeOwned: boolean
+  /**
+   * Dimensions the PTY currently has, so a resize request that changes nothing
+   * is dropped instead of raising a needless SIGWINCH at the running program.
+   */
+  appliedSize: { cols: number; rows: number } | null
 }
 
 /**
@@ -167,6 +172,8 @@ export class PtyManager {
       machine: new ActivityMachine(),
       desktopSize: { cols, rows },
       bridgeOwned: false,
+      // The PTY was spawned at these dimensions, so that is what it already has.
+      appliedSize: { cols, rows },
     }
     this.entries.set(opts.id, entry)
     for (const sink of this.sinks) sink.onCreate?.(opts.id)
@@ -265,6 +272,7 @@ export class PtyManager {
     const { next, applied } = resolveResize(entry, cols, rows, source)
     entry.desktopSize = next.desktopSize
     entry.bridgeOwned = next.bridgeOwned
+    entry.appliedSize = next.appliedSize
     if (applied) this.applyResize(entry, applied.cols, applied.rows)
   }
 
@@ -278,6 +286,7 @@ export class PtyManager {
     if (!entry) return
     const { next, applied } = resolveRelease(entry)
     entry.bridgeOwned = next.bridgeOwned
+    entry.appliedSize = next.appliedSize
     if (applied) this.applyResize(entry, applied.cols, applied.rows)
   }
 

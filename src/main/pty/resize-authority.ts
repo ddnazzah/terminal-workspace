@@ -19,6 +19,13 @@ export interface SizeState {
   desktopSize: TerminalSize
   /** Whether a phone currently owns the size. */
   bridgeOwned: boolean
+  /**
+   * Size the PTY currently has. A resize to these same dimensions is dropped:
+   * `ioctl(TIOCSWINSZ)` raises SIGWINCH even when nothing changed, and the
+   * foreground program repaints — which on a phone yanks the view off wherever
+   * the user had scrolled to. Null until the first resize is applied.
+   */
+  appliedSize: TerminalSize | null
 }
 
 export interface ResizeOutcome {
@@ -31,6 +38,10 @@ export interface ResizeOutcome {
 /** Clamp to a valid PTY size (node-pty rejects zero/fractional dimensions). */
 function normalize(cols: number, rows: number): TerminalSize {
   return { cols: Math.max(1, Math.floor(cols)), rows: Math.max(1, Math.floor(rows)) }
+}
+
+function isSameSize(a: TerminalSize | null | undefined, b: TerminalSize): boolean {
+  return !!a && a.cols === b.cols && a.rows === b.rows
 }
 
 /**
@@ -47,14 +58,28 @@ export function resolveResize(
 ): ResizeOutcome {
   const size = normalize(cols, rows)
   if (source === 'desktop') {
+    // The desktop's request is always recorded, but only reaches the PTY when
+    // no phone owns the size and the dimensions actually differ.
+    const applied = state.bridgeOwned || isSameSize(state.appliedSize, size) ? null : size
     return {
-      next: { desktopSize: size, bridgeOwned: state.bridgeOwned },
-      applied: state.bridgeOwned ? null : size,
+      next: {
+        desktopSize: size,
+        bridgeOwned: state.bridgeOwned,
+        appliedSize: applied ?? state.appliedSize,
+      },
+      applied,
     }
   }
+  // A phone takes authority even when its size matches what the PTY already
+  // has — but an unchanged size must not be re-applied (see `appliedSize`).
+  const applied = isSameSize(state.appliedSize, size) ? null : size
   return {
-    next: { desktopSize: state.desktopSize, bridgeOwned: true },
-    applied: size,
+    next: {
+      desktopSize: state.desktopSize,
+      bridgeOwned: true,
+      appliedSize: applied ?? state.appliedSize,
+    },
+    applied,
   }
 }
 
@@ -64,8 +89,14 @@ export function resolveResize(
  */
 export function resolveRelease(state: SizeState): ResizeOutcome {
   if (!state.bridgeOwned) return { next: state, applied: null }
+  // Nothing to restore when the phone was already running at the desktop's size.
+  const applied = isSameSize(state.appliedSize, state.desktopSize) ? null : state.desktopSize
   return {
-    next: { desktopSize: state.desktopSize, bridgeOwned: false },
-    applied: state.desktopSize,
+    next: {
+      desktopSize: state.desktopSize,
+      bridgeOwned: false,
+      appliedSize: applied ?? state.appliedSize,
+    },
+    applied,
   }
 }

@@ -37,13 +37,20 @@ function resolveCwd(root: string, rel: string | undefined): string {
  */
 export function createTerminal(
   pty: PtyManager,
-  opts: CreateTerminalOptions
+  opts: CreateTerminalOptions,
+  /**
+   * Absolute cwd that bypasses the project-root containment check. Main-process
+   * callers only — the board scheduler uses it to launch a worker inside a git
+   * worktree, which by design lives *outside* the project folder. Never plumbed
+   * through IPC or the mobile bridge, both of which must stay contained.
+   */
+  trustedCwd?: string
 ): TerminalRecord | null {
   const project = getProject(opts.projectId)
   if (!project) return null
 
   const shell = opts.shell ?? getDefaultShell()
-  const cwd = resolveCwd(project.path, opts.cwd)
+  const cwd = trustedCwd ?? resolveCwd(project.path, opts.cwd)
 
   // Restore path: any reused id rebuilds a persisted tab — resumed Claude
   // session, relaunched agent, or plain shell alike — so the recreated PTY

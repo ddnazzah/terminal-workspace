@@ -14,6 +14,7 @@ import { BottomPanel } from './components/workspace/bottom-panel'
 import { useProjects } from './hooks/use-projects'
 import { useWindowZoom } from './lib/zoom'
 import { createProjectTerminal, useWorkspace } from '@renderer/state/store'
+import { BOARD_TAB_PATH, NOTES_TAB_PATH } from '@renderer/lib/tab-uri'
 import { stripSpinner } from '@shared/terminal-title'
 import { HOME_PROJECT_ID, type ActivityStatus, type Project, type TerminalRecord } from '@shared/types'
 
@@ -55,6 +56,15 @@ export default function App() {
       }
     }
   }, [setBottomPanelOpen])
+
+  // Board and notes open as tabs in the editor surface, alongside file tabs.
+  const openFile = useWorkspace((s) => s.openFile)
+  const openBoard = useCallback(() => {
+    if (selectedProject) openFile({ projectId: selectedProject.id, path: BOARD_TAB_PATH })
+  }, [selectedProject, openFile])
+  const openNotes = useCallback(() => {
+    if (selectedProject) openFile({ projectId: selectedProject.id, path: NOTES_TAB_PATH })
+  }, [selectedProject, openFile])
 
   const pendingFocusRef = useRef<{ projectId: string; terminalId: string } | null>(null)
 
@@ -312,6 +322,9 @@ export default function App() {
         terminalOpen={bottomPanelOpen}
         onToggleTerminal={toggleHomeTerminal}
         onOpenSettings={() => setSettingsOpen(true)}
+        onOpenBoard={openBoard}
+        onOpenNotes={openNotes}
+        projectActionsDisabled={!selectedProject}
       />
       <div className="flex flex-1 min-h-0 gap-1.5 py-1.5">
         {!sidebarCollapsed && <ProjectList />}

@@ -3,6 +3,9 @@ import { MAX_TEXT_FILE_LABEL } from '@shared/types'
 import { tabKey, useWorkspace, type OpenedFile } from '@renderer/state/store'
 import { useSettings } from '@renderer/state/settings'
 import { formattableParser, formatText } from '@renderer/lib/formatter'
+import { isVirtualTab, noteTabPath, parseTabPath } from '@renderer/lib/tab-uri'
+import { BoardTab } from '../board/board-tab'
+import { NotesTab } from '../board/notes-tab'
 import { MonacoEditor, gcMonacoModels } from './monaco-editor'
 import { MarkdownPreview } from './markdown-preview'
 
@@ -29,9 +32,11 @@ export function FileViewer({ projectId }: Props) {
   const activeFile: OpenedFile | null =
     (activePath && projectTabs.find((f) => f.path === activePath)) || null
 
-  // Load content for any tab still in 'loading' state.
+  // Load content for any tab still in 'loading' state. Board and note tabs have
+  // no file behind them, so they never enter this path.
   useEffect(() => {
     for (const file of projectTabs) {
+      if (isVirtualTab(file.path)) continue
       const state = fileStates[tabKey(file)]
       if (state?.kind !== 'loading') continue
       const ext = extOf(file.path)
@@ -74,13 +79,44 @@ export function FileViewer({ projectId }: Props) {
     <div className="flex flex-col h-full w-full bg-background min-w-0">
       <div className="flex-1 min-h-0 overflow-hidden">
         {activeFile ? (
-          <EditorPane file={activeFile} onSave={save} onChange={setFileContent} />
+          <TabPane file={activeFile} projectId={projectId} onSave={save} onChange={setFileContent} />
         ) : (
           <div className="text-[12px] text-foreground/40 p-4">No file selected.</div>
         )}
       </div>
     </div>
   )
+}
+
+/**
+ * Route a tab to its surface. Board and note tabs share the file tab strip via a
+ * reserved `wterm://` path (see lib/tab-uri.ts) but have no file behind them.
+ */
+function TabPane({
+  file,
+  projectId,
+  onSave,
+  onChange,
+}: {
+  file: OpenedFile
+  projectId: string
+  onSave: (file: OpenedFile, text: string) => Promise<void>
+  onChange: (file: OpenedFile, content: string) => void
+}) {
+  const openFile = useWorkspace((s) => s.openFile)
+  const target = parseTabPath(file.path)
+
+  if (target.kind === 'board') return <BoardTab projectId={projectId} />
+  if (target.kind === 'note') {
+    return (
+      <NotesTab
+        projectId={projectId}
+        noteId={target.noteId}
+        onOpenNote={(noteId) => openFile({ projectId, path: noteTabPath(noteId) })}
+      />
+    )
+  }
+  return <EditorPane file={file} onSave={onSave} onChange={onChange} />
 }
 
 function EditorPane({
