@@ -32,6 +32,9 @@ export function SearchPanel({ projectId, repoRel = '' }: Props) {
   const [hits, setHits] = useState<SearchHit[]>([])
   const [truncated, setTruncated] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [replacement, setReplacement] = useState('')
+  const [showReplace, setShowReplace] = useState(false)
+  const [replaceNote, setReplaceNote] = useState<string | null>(null)
   const openFile = useWorkspace((s) => s.openFile)
 
   // Guards against an older, slower query overwriting a newer result.
@@ -64,6 +67,7 @@ export function SearchPanel({ projectId, repoRel = '' }: Props) {
   )
 
   useEffect(() => {
+    setReplaceNote(null)
     const id = setTimeout(() => void run(query), DEBOUNCE_MS)
     return () => clearTimeout(id)
   }, [query, run])
@@ -78,6 +82,26 @@ export function SearchPanel({ projectId, repoRel = '' }: Props) {
     return [...byPath.entries()].map(([path, list]) => ({ path, hits: list }))
   }, [hits])
 
+  const replaceAll = async (paths: string[]): Promise<void> => {
+    if (query.trim() === '' || paths.length === 0) return
+    setBusy(true)
+    setReplaceNote(null)
+    try {
+      const res = await window.api.git.replace(projectId, repoRel, paths, query, replacement, {
+        regex,
+        caseSensitive,
+        wholeWord,
+      })
+      setReplaceNote(
+        `Replaced ${res.replacements} occurrence${res.replacements === 1 ? '' : 's'} in ${res.filesChanged} file${res.filesChanged === 1 ? '' : 's'}`
+      )
+      // Re-run so the results reflect what is now on disk.
+      await run(query)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const open = (hit: SearchHit): void => {
     const full = repoRel ? `${repoRel}/${hit.path}` : hit.path
     openFile({ projectId, path: full })
@@ -85,7 +109,20 @@ export function SearchPanel({ projectId, repoRel = '' }: Props) {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex shrink-0 items-center gap-1 px-2 py-2">
+      <div className="flex shrink-0 items-start gap-1 px-2 py-2">
+        <button
+          type="button"
+          onClick={() => setShowReplace((v) => !v)}
+          title={showReplace ? 'Hide Replace' : 'Toggle Replace'}
+          aria-label="Toggle Replace"
+          aria-expanded={showReplace}
+          className="mt-1 shrink-0 rounded p-0.5 hover:bg-[var(--vscode-list-hoverBackground)]"
+          style={{ color: 'var(--vscode-icon-foreground)' }}
+        >
+          <Codicon name={showReplace ? 'chevron-down' : 'chevron-right'} size={16} />
+        </button>
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+        <div className="flex items-center gap-1">
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
@@ -107,10 +144,45 @@ export function SearchPanel({ projectId, repoRel = '' }: Props) {
         <Toggle active={regex} onClick={() => setRegex((v) => !v)} label="Use Regular Expression">
           .*
         </Toggle>
+        </div>
+
+        {showReplace && (
+          <div className="flex items-center gap-1">
+            <input
+              value={replacement}
+              onChange={(e) => setReplacement(e.target.value)}
+              placeholder="Replace"
+              aria-label="Replace with"
+              className="min-w-0 flex-1 rounded px-2 py-1 text-[13px] outline-none"
+              style={{
+                background: 'var(--vscode-input-background)',
+                border: '1px solid var(--vscode-input-border)',
+                color: 'var(--vscode-input-foreground)',
+              }}
+            />
+            <button
+              type="button"
+              disabled={busy || hits.length === 0}
+              onClick={() => void replaceAll(groups.map((g) => g.path))}
+              title="Replace All"
+              aria-label="Replace All"
+              className="shrink-0 rounded px-2 py-1 text-[11px] disabled:opacity-35"
+              style={{
+                background: 'var(--vscode-button-background)',
+                color: 'var(--vscode-button-foreground)',
+              }}
+            >
+              All
+            </button>
+          </div>
+        )}
+        </div>
       </div>
 
       <div className="px-3 pb-1 text-[11px] opacity-50">
-        {busy
+        {replaceNote
+          ? replaceNote
+          : busy
           ? 'Searching…'
           : query.trim() === ''
             ? ''

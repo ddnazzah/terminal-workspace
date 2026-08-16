@@ -222,6 +222,15 @@ const api = {
       options: { caseSensitive?: boolean; regex?: boolean; wholeWord?: boolean }
     ): Promise<{ hits: SearchHit[]; truncated: boolean }> =>
       ipcRenderer.invoke(IPC.git.search, projectId, repoRel, query, options),
+    replace: (
+      projectId: ProjectId,
+      repoRel: string,
+      relPaths: string[],
+      search: string,
+      replacement: string,
+      options: { regex: boolean; caseSensitive: boolean; wholeWord: boolean }
+    ): Promise<{ filesChanged: number; replacements: number }> =>
+      ipcRenderer.invoke(IPC.git.replace, projectId, repoRel, relPaths, search, replacement, options),
     fileAtRev: (
       projectId: ProjectId,
       repoRel: string,

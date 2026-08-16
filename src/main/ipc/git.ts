@@ -1,5 +1,7 @@
-import { join } from 'node:path'
+import { join, resolve, sep } from 'node:path'
 import { ipcMain } from 'electron'
+import { promises as fsp } from 'node:fs'
+import { replaceInText, type ReplaceOptions } from '@shared/replace-in-text'
 import {
   IPC,
   type GitFileStatusMap,
@@ -146,6 +148,23 @@ export function registerGitIpc(): void {
   )
 
   ipcMain.handle(
+    IPC.git.replace,
+    async (
+      _e,
+      projectId: ProjectId,
+      repoRel: string,
+      relPaths: string[],
+      search: string,
+      replacement: string,
+      options: ReplaceOptions
+    ): Promise<{ filesChanged: number; replacements: number }> => {
+      const project = getProject(projectId)
+      if (!project) return { filesChanged: 0, replacements: 0 }
+      return replaceAcrossFiles(project.path, repoRel, relPaths, search, replacement, options)
+    }
+  )
+
+  ipcMain.handle(
     IPC.git.commit,
     async (
       _e,
@@ -175,4 +194,44 @@ function repoCwd(projectId: ProjectId, repoRel: string): string | null {
   const project = getProject(projectId)
   if (!project) return null
   return repoRel ? join(project.path, repoRel) : project.path
+}
+
+/**
+ * Apply a replacement across the given files.
+ *
+ * Each file is read, rewritten and written back individually so one failure
+ * cannot abort the rest, and files whose content is unchanged are skipped
+ * rather than rewritten — an untouched mtime keeps watchers and git quiet.
+ */
+async function replaceAcrossFiles(
+  projectRoot: string,
+  repoRel: string,
+  relPaths: string[],
+  search: string,
+  replacement: string,
+  options: ReplaceOptions
+): Promise<{ filesChanged: number; replacements: number }> {
+  let filesChanged = 0
+  let replacements = 0
+
+  for (const relPath of relPaths) {
+    const abs = resolve(projectRoot, repoRel, relPath)
+    // Never write outside the project, whatever the search returned.
+    if (abs !== resolve(projectRoot) && !abs.startsWith(resolve(projectRoot) + sep)) continue
+
+    try {
+      const before = await fsp.readFile(abs, 'utf-8')
+      const result = replaceInText(before, search, replacement, options)
+      if (result.error || result.count === 0 || result.text === before) continue
+
+      await fsp.writeFile(abs, result.text, 'utf-8')
+      filesChanged += 1
+      replacements += result.count
+    } catch {
+      // Unreadable, binary or vanished since the search — skip it.
+      continue
+    }
+  }
+
+  return { filesChanged, replacements }
 }

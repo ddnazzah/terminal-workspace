@@ -14,7 +14,7 @@
 - **Commands**: global shortcuts routed through a keybinding registry with
   when-contexts, plus a ⌘⇧P command palette.
 - **Search**: project-wide search panel backed by `git grep`, with match-case,
-  whole-word and regex toggles, results grouped by file.
+  whole-word and regex toggles, results grouped by file, and replace-in-files.
 
 ### Changed
 

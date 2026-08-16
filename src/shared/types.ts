@@ -211,6 +211,7 @@ export const IPC = {
     commit: 'git:commit',
     fileAtRev: 'git:file-at-rev',
     search: 'git:search',
+    replace: 'git:replace',
   },
   github: {
     getSettings: 'github:get-settings',
