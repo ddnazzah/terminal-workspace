@@ -181,6 +181,7 @@ export default function App() {
   // and can be rebound. Widget-local keys (Esc, Enter, arrows) stay with their
   // widgets, as in VS Code.
   const [paletteOpen, setPaletteOpen] = useState(false)
+  const [paletteSeed, setPaletteSeed] = useState('')
 
   const commandContexts = useMemo(() => {
     const active = new Set<string>()
@@ -198,7 +199,10 @@ export default function App() {
       'workbench.toggleSidebar': toggleSidebar,
       'workbench.toggleRightSidebar': toggleRightSidebar,
       'workbench.togglePanel': toggleHomeTerminal,
-      'workbench.commandPalette': () => setPaletteOpen(true),
+      'workbench.commandPalette': () => {
+        setPaletteSeed('')
+        setPaletteOpen(true)
+      },
       'workbench.quickOpen': () => {
         if (selectedProject) setQuickOpenOpen(true)
       },
@@ -365,6 +369,7 @@ export default function App() {
       )}
       <CommandPalette
         open={paletteOpen}
+        seed={paletteSeed}
         available={new Set(Object.keys(commandHandlers))}
         onRun={(id) => commandHandlers[id]?.()}
         onClose={() => setPaletteOpen(false)}
@@ -375,6 +380,10 @@ export default function App() {
           open={quickOpenOpen}
           projectId={selectedProject.id}
           onClose={() => setQuickOpenOpen(false)}
+          onSwitchToCommands={(term) => {
+            setPaletteSeed(term)
+            setPaletteOpen(true)
+          }}
         />
       )}
       <UpdateBanner />

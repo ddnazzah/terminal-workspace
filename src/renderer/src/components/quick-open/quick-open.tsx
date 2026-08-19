@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ProjectId, WalkResult } from '@shared/types'
+import { parseQuickOpenQuery } from '@renderer/lib/quick-open-mode'
 import { useWorkspace } from '@renderer/state/store'
 import { rankFiles, type RankedFile } from '@renderer/lib/fuzzy-match'
 import { FileIcon } from '../right-sidebar/file-icon'
 
 interface QuickOpenProps {
+  /** Called when the user types the '>' command prefix, with the term so far. */
+  onSwitchToCommands: (term: string) => void
   open: boolean
   projectId: ProjectId
   onClose: () => void
@@ -39,9 +42,20 @@ function Highlighted({ name, indices }: { name: string; indices: number[] }) {
   )
 }
 
-export function QuickOpen({ open, projectId, onClose }: QuickOpenProps) {
+export function QuickOpen({ open, projectId, onClose, onSwitchToCommands }: QuickOpenProps) {
   const openFile = useWorkspace((s) => s.openFile)
+  const revealPosition = useWorkspace((s) => s.revealPosition)
   const [query, setQuery] = useState('')
+  const parsed = parseQuickOpenQuery(query)
+
+  // '>' is the command prefix; hand straight over to the palette rather than
+  // duplicating command search here.
+  useEffect(() => {
+    if (parsed.mode === 'commands') {
+      onClose()
+      onSwitchToCommands(parsed.term)
+    }
+  }, [parsed.mode, parsed.term, onClose, onSwitchToCommands])
   const [walk, setWalk] = useState<WalkResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [selected, setSelected] = useState(0)
@@ -108,6 +122,13 @@ export function QuickOpen({ open, projectId, onClose }: QuickOpenProps) {
       if (results.length > 0) setSelected((active - 1 + results.length) % results.length)
     } else if (e.key === 'Enter') {
       e.preventDefault()
+      if (parsed.mode === 'line') {
+        if (parsed.line !== null && parsed.line !== undefined) {
+          revealPosition(parsed.line, parsed.column)
+          onClose()
+        }
+        return
+      }
       choose(results[active])
     }
   }

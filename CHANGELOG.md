@@ -12,7 +12,8 @@
 - **Source control**: staged / unstaged / merge groups with per-row stage,
   unstage and discard; a commit box; and a Monaco diff on click.
 - **Commands**: global shortcuts routed through a keybinding registry with
-  when-contexts, plus a ⌘⇧P command palette.
+  when-contexts, plus a ⌘⇧P command palette. Quick open understands VS Code's
+  prefixes — `>` for commands, `:42` (or `:42:8`) to jump to a line.
 - **Search**: project-wide search panel backed by `git grep`, with match-case,
   whole-word and regex toggles, results grouped by file, and replace-in-files.
 

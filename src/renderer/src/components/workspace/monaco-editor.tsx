@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { useWorkspace } from '@renderer/state/store'
 import { monaco, ensureThemes } from '@renderer/lib/monaco-setup'
 import { languageForFilename } from '@renderer/lib/monaco-language'
 import { useTheme } from '@renderer/lib/theme'
@@ -168,6 +169,23 @@ export function MonacoEditor({ fileKey, filename, initialContent, onChange, onSa
   useEffect(() => {
     editorRef.current?.updateOptions(optionsFrom(settings))
   }, [settings])
+
+  // Apply a pending reveal from quick-open's `:line` mode, then clear it so a
+  // repeat jump to the same line fires again.
+  const pendingReveal = useWorkspace((s) => s.pendingReveal)
+  const clearPendingReveal = useWorkspace((s) => s.clearPendingReveal)
+  useEffect(() => {
+    const editor = editorRef.current
+    if (!pendingReveal || !editor) return
+
+    const model = editor.getModel()
+    // Clamp: the file may be shorter than the requested line.
+    const line = model ? Math.min(pendingReveal.line, model.getLineCount()) : pendingReveal.line
+    editor.revealLineInCenter(line)
+    editor.setPosition({ lineNumber: line, column: pendingReveal.column })
+    editor.focus()
+    clearPendingReveal()
+  }, [pendingReveal, clearPendingReveal])
 
   // React to theme changes.
   useEffect(() => {

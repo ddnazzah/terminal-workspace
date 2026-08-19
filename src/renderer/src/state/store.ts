@@ -167,6 +167,12 @@ interface WorkspaceState {
 
   rightSidebarWidth: number
   rightSidebarCollapsed: boolean
+  /**
+   * A position the active editor should scroll to and place the cursor at.
+   * Set by quick-open's `:line` mode; the editor clears it once applied, so a
+   * repeat jump to the same line still fires.
+   */
+  pendingReveal: { line: number; column: number } | null
   rightSidebarTab: RightSidebarTab
   setRightSidebarWidth: (width: number) => void
   setRightSidebarCollapsed: (collapsed: boolean) => void
@@ -177,6 +183,8 @@ interface WorkspaceState {
   toggleBottomPanel: () => void
   setBottomPanelOpen: (open: boolean) => void
   setBottomPanelHeight: (height: number) => void
+  revealPosition: (line: number, column?: number) => void
+  clearPendingReveal: () => void
   setRightSidebarTab: (tab: RightSidebarTab) => void
 
   openFiles: OpenedFile[]
@@ -261,6 +269,7 @@ export const useWorkspace = create<WorkspaceState>((set) => ({
 
   rightSidebarWidth: readInitialRightSidebarWidth(),
   rightSidebarCollapsed: readInitialRightSidebarCollapsed(),
+  pendingReveal: null,
   rightSidebarTab: readInitialRightSidebarTab(),
 
   bottomPanelOpen: readInitialBottomPanelOpen(),
@@ -296,6 +305,8 @@ export const useWorkspace = create<WorkspaceState>((set) => ({
       return { rightSidebarCollapsed: next }
     }),
 
+  revealPosition: (line, column = 1) => set({ pendingReveal: { line, column } }),
+  clearPendingReveal: () => set({ pendingReveal: null }),
   setRightSidebarTab: (tab) => {
     set({ rightSidebarTab: tab })
     try {

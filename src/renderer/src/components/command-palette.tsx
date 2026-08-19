@@ -5,6 +5,8 @@ import { formatChord, parseChord } from '@renderer/lib/keybindings'
 
 interface Props {
   open: boolean
+  /** Initial query, used when quick-open hands over via the '>' prefix. */
+  seed?: string
   /** Command ids that currently have a handler; others are hidden. */
   available: ReadonlySet<string>
   onRun: (commandId: string) => void
@@ -38,7 +40,7 @@ function Highlighted({ text, indices }: { text: string; indices: number[] }) {
  * with a keybinding is automatically discoverable here — and its shortcut is
  * shown alongside, which is how users learn the bindings exist.
  */
-export function CommandPalette({ open, available, onRun, onClose }: Props) {
+export function CommandPalette({ open, seed = '', available, onRun, onClose }: Props) {
   const [query, setQuery] = useState('')
   const [index, setIndex] = useState(0)
   const inputRef = useRef<HTMLInputElement | null>(null)
@@ -52,11 +54,11 @@ export function CommandPalette({ open, available, onRun, onClose }: Props) {
   // Reset on each open so the palette never reappears mid-query.
   useEffect(() => {
     if (open) {
-      setQuery('')
+      setQuery(seed)
       setIndex(0)
       inputRef.current?.focus()
     }
-  }, [open])
+  }, [open, seed])
 
   // Selection can outrun a narrowing result list.
   useEffect(() => {
