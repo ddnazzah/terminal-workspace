@@ -170,22 +170,32 @@ export function MonacoEditor({ fileKey, filename, initialContent, onChange, onSa
     editorRef.current?.updateOptions(optionsFrom(settings))
   }, [settings])
 
-  // Apply a pending reveal from quick-open's `:line` mode, then clear it so a
-  // repeat jump to the same line fires again.
+  // Apply a pending reveal — quick-open's `:line`, or a search result being
+  // opened at its match — then clear it so a repeat jump to the same line
+  // fires again.
   const pendingReveal = useWorkspace((s) => s.pendingReveal)
   const clearPendingReveal = useWorkspace((s) => s.clearPendingReveal)
   useEffect(() => {
     const editor = editorRef.current
     if (!pendingReveal || !editor) return
 
+    // A reveal aimed at a specific file must wait for THAT file's editor.
+    // Opening a search result sets the reveal before the new tab has mounted,
+    // so without this the still-visible previous file would scroll instead.
+    if (pendingReveal.fileKey && pendingReveal.fileKey !== fileKey) return
+
     const model = editor.getModel()
+    if (!model) return
+
     // Clamp: the file may be shorter than the requested line.
-    const line = model ? Math.min(pendingReveal.line, model.getLineCount()) : pendingReveal.line
+    const line = Math.min(pendingReveal.line, model.getLineCount())
     editor.revealLineInCenter(line)
     editor.setPosition({ lineNumber: line, column: pendingReveal.column })
     editor.focus()
     clearPendingReveal()
-  }, [pendingReveal, clearPendingReveal])
+    // fileKey is a dependency so the reveal is retried once the target file's
+    // editor has actually mounted its model.
+  }, [pendingReveal, clearPendingReveal, fileKey])
 
   // React to theme changes.
   useEffect(() => {

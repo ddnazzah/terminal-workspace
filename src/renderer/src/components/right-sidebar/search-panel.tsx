@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { SearchHit } from '@shared/types'
-import { useWorkspace } from '@renderer/state/store'
+import { tabKey, useWorkspace } from '@renderer/state/store'
 import { Codicon } from '../codicon'
 import { FileIcon } from './file-icon'
 
@@ -36,6 +36,7 @@ export function SearchPanel({ projectId, repoRel = '' }: Props) {
   const [showReplace, setShowReplace] = useState(false)
   const [replaceNote, setReplaceNote] = useState<string | null>(null)
   const openFile = useWorkspace((s) => s.openFile)
+  const revealPosition = useWorkspace((s) => s.revealPosition)
 
   // Guards against an older, slower query overwriting a newer result.
   const runIdRef = useRef(0)
@@ -105,6 +106,9 @@ export function SearchPanel({ projectId, repoRel = '' }: Props) {
   const open = (hit: SearchHit): void => {
     const full = repoRel ? `${repoRel}/${hit.path}` : hit.path
     openFile({ projectId, path: full })
+    // Target the reveal at this file: the tab may not have mounted yet, and an
+    // untargeted reveal would scroll whichever editor is currently on screen.
+    revealPosition(hit.line, hit.column, tabKey({ projectId, path: full }))
   }
 
   return (

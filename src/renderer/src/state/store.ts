@@ -172,7 +172,7 @@ interface WorkspaceState {
    * Set by quick-open's `:line` mode; the editor clears it once applied, so a
    * repeat jump to the same line still fires.
    */
-  pendingReveal: { line: number; column: number } | null
+  pendingReveal: { line: number; column: number; fileKey?: string } | null
   rightSidebarTab: RightSidebarTab
   setRightSidebarWidth: (width: number) => void
   setRightSidebarCollapsed: (collapsed: boolean) => void
@@ -183,7 +183,7 @@ interface WorkspaceState {
   toggleBottomPanel: () => void
   setBottomPanelOpen: (open: boolean) => void
   setBottomPanelHeight: (height: number) => void
-  revealPosition: (line: number, column?: number) => void
+  revealPosition: (line: number, column?: number, fileKey?: string) => void
   clearPendingReveal: () => void
   setRightSidebarTab: (tab: RightSidebarTab) => void
 
@@ -305,7 +305,8 @@ export const useWorkspace = create<WorkspaceState>((set) => ({
       return { rightSidebarCollapsed: next }
     }),
 
-  revealPosition: (line, column = 1) => set({ pendingReveal: { line, column } }),
+  revealPosition: (line, column = 1, fileKey) =>
+    set({ pendingReveal: { line, column, ...(fileKey ? { fileKey } : {}) } }),
   clearPendingReveal: () => set({ pendingReveal: null }),
   setRightSidebarTab: (tab) => {
     set({ rightSidebarTab: tab })

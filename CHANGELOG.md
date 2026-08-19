@@ -15,7 +15,8 @@
   when-contexts, plus a ⌘⇧P command palette. Quick open understands VS Code's
   prefixes — `>` for commands, `:42` (or `:42:8`) to jump to a line.
 - **Search**: project-wide search panel backed by `git grep`, with match-case,
-  whole-word and regex toggles, results grouped by file, and replace-in-files.
+  whole-word and regex toggles, results grouped by file, replace-in-files, and clicking a result opens the
+  file scrolled to the matching line.
 
 ### Changed
 
