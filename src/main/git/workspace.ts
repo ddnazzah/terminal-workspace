@@ -1,4 +1,7 @@
 import { basename, join } from 'node:path'
+import { searchFiles, type SearchOptions } from './local'
+import { mergeRepoHits } from './merge-search'
+import type { SearchHit } from '@shared/types'
 import type { GitFileStatusMap, RepoRef } from '@shared/types'
 import { discoverRepos } from './discover'
 import { getFileStatus, getGitInfo } from './local'
@@ -53,4 +56,33 @@ export async function getWorkspaceFileStatus(projectPath: string): Promise<GitFi
     }))
   )
   return mergeStatusMaps(maps)
+}
+
+/** Cap on merged hits across every repo in the project. */
+const MAX_WORKSPACE_HITS = 2000
+
+/**
+ * Search every git repo in the project, not just one.
+ *
+ * A project can hold several repos (see {@link listRepos}); searching only the
+ * project root finds nothing when the root itself is not a repo, which is the
+ * normal multi-repo layout. Results come back with project-relative paths so
+ * the renderer can open them without knowing which repo they came from.
+ */
+export async function searchWorkspace(
+  projectPath: string,
+  query: string,
+  options: SearchOptions
+): Promise<{ hits: SearchHit[]; truncated: boolean }> {
+  const repos = await listRepos(projectPath)
+  if (repos.length === 0) return { hits: [], truncated: false }
+
+  const perRepo = await Promise.all(
+    repos.map(async (repo) => ({
+      rel: repo.rel,
+      hits: (await searchFiles(join(projectPath, repo.rel), query, options)).hits,
+    }))
+  )
+
+  return mergeRepoHits(perRepo, MAX_WORKSPACE_HITS)
 }

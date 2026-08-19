@@ -25,7 +25,7 @@ import {
   stagePaths,
   unstagePaths,
 } from '../git/local'
-import { getWorkspaceFileStatus, listRepos } from '../git/workspace'
+import { getWorkspaceFileStatus, listRepos, searchWorkspace } from '../git/workspace'
 
 const EMPTY_GIT_INFO: GitInfo = {
   isRepo: false,
@@ -142,8 +142,16 @@ export function registerGitIpc(): void {
       query: string,
       options: SearchOptions
     ): Promise<{ hits: SearchHit[]; truncated: boolean }> => {
-      const cwd = repoCwd(projectId, repoRel)
-      return cwd ? searchFiles(cwd, query, options) : { hits: [], truncated: false }
+      const project = getProject(projectId)
+      if (!project) return { hits: [], truncated: false }
+
+      // repoRel scopes the search to one repo; empty means the whole project,
+      // which is the normal case and must cover every repo it contains.
+      if (repoRel) {
+        const cwd = repoCwd(projectId, repoRel)
+        return cwd ? searchFiles(cwd, query, options) : { hits: [], truncated: false }
+      }
+      return searchWorkspace(project.path, query, options)
     }
   )
 
