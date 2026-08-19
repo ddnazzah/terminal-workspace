@@ -5,6 +5,17 @@ import { useWorkspace } from '@renderer/state/store'
 import { useTerminals } from '@renderer/hooks/use-terminals'
 import { isMac, isWindows } from '@renderer/lib/platform'
 import { TerminalSidebarItem } from './terminal-sidebar-item'
+import { strongestState } from '../activity-dot'
+import { useNow } from '@renderer/hooks/use-now'
+import {
+  indicatorColor,
+  indicatorLabel,
+  indicatorState,
+  isPulsing,
+} from '@renderer/lib/terminal-indicator'
+
+/** The collapsed row only needs to notice staleness, so it ticks lazily. */
+const PROJECT_AGE_TICK_MS = 30_000
 
 // Per-platform names for the native terminal / file-manager apps.
 const TERMINAL_APP = isMac ? 'iTerm' : isWindows ? 'Terminal' : 'terminal'
@@ -50,13 +61,27 @@ export function ProjectItem({
   const titleByTerminal = useWorkspace((s) => s.titleByTerminal)
   const busyByTerminal = useWorkspace((s) => s.busyByTerminal)
   const attentionByTerminal = useWorkspace((s) => s.attentionByTerminal)
+  const attentionMetaByTerminal = useWorkspace((s) => s.attentionMetaByTerminal)
   const reorderTerminal = useWorkspace((s) => s.reorderTerminal)
   const [projDragOver, setProjDragOver] = useState(false)
 
   const { activeId, create, close, rename: renameTerminal, setActive } = useTerminals(project)
 
-  const projectHasUnread = project.terminals.some((t) => (unreadByTerminal[t.id] ?? 0) > 0)
-  const projectHasAttention = project.terminals.some((t) => !!attentionByTerminal[t.id])
+  // Collapsed, the project row stands in for every terminal inside it, so it
+  // shows whichever of them is asking loudest.
+  const now = useNow(PROJECT_AGE_TICK_MS)
+  const rollup = strongestState(
+    project.terminals.map((t) =>
+      indicatorState({
+        busy: !!busyByTerminal[t.id],
+        attention: !!attentionByTerminal[t.id],
+        unread: (unreadByTerminal[t.id] ?? 0) > 0,
+        reason: attentionMetaByTerminal[t.id]?.reason ?? null,
+        changedAt: attentionMetaByTerminal[t.id]?.changedAt ?? 0,
+        now,
+      })
+    )
+  )
 
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(project.name)
@@ -172,17 +197,15 @@ export function ProjectItem({
           )}
         </div>
 
-        {!expanded && (projectHasAttention || projectHasUnread) && (
+        {!expanded && rollup !== 'idle' && rollup !== 'working' && (
           <span
-            aria-label={projectHasAttention ? 'Terminal needs your input' : 'Unread terminal activity'}
-            title={
-              projectHasAttention
-                ? 'A terminal in this project needs your input'
-                : 'A terminal in this project has new output'
-            }
+            aria-label={`A terminal in this project: ${indicatorLabel(rollup, null)}`}
+            title={indicatorLabel(rollup, null)}
             className={[
-              'inline-block w-1.5 h-1.5 rounded-full flex-shrink-0 animate-pulse',
-              projectHasAttention ? 'bg-red-500' : 'bg-sky-400',
+              'inline-block w-1.5 h-1.5 rounded-full flex-shrink-0',
+              indicatorColor(rollup),
+              isPulsing(rollup) ? `activity-dot--${rollup}` : '',
+              rollup === 'stale' ? 'activity-dot--stale' : '',
             ].join(' ')}
           />
         )}
@@ -247,6 +270,7 @@ export function ProjectItem({
               unread={(unreadByTerminal[t.id] ?? 0) > 0}
               busy={!!busyByTerminal[t.id]}
               attention={!!attentionByTerminal[t.id]}
+              attentionMeta={attentionMetaByTerminal[t.id]}
               autoTitle={titleByTerminal[t.id]}
               onSelect={() => {
                 if (!selected) onSelect()

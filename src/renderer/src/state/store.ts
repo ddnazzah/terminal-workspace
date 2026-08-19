@@ -1,6 +1,19 @@
 import { create } from 'zustand'
 import { HOME_PROJECT_ID } from '@shared/types'
-import type { Project, ProjectId, TerminalId, TerminalRecord } from '@shared/types'
+import type {
+  AttentionReason,
+  Project,
+  ProjectId,
+  TerminalId,
+  TerminalRecord,
+} from '@shared/types'
+
+/** Why a terminal is waiting on the user, and since when. */
+export interface AttentionMeta {
+  reason: AttentionReason | null
+  detail: string | null
+  changedAt: number
+}
 import {
   pendingCloseAfterRemoval,
   resolveCloseLabel,
@@ -156,6 +169,12 @@ interface WorkspaceState {
   busyByTerminal: Record<TerminalId, boolean>
   /** Terminals whose agent finished a turn and is waiting on the user (red cue). */
   attentionByTerminal: Record<TerminalId, boolean>
+  /**
+   * Why each waiting terminal is waiting, and since when — only a first-party
+   * agent hook can say (see main/agent). Absent for sessions detected from
+   * window titles alone, so the indicator treats it as optional.
+   */
+  attentionMetaByTerminal: Record<TerminalId, AttentionMeta>
   /** Terminal awaiting close confirmation; null when no dialog is open. */
   pendingTerminalClose: PendingTerminalClose | null
 
@@ -237,7 +256,11 @@ interface WorkspaceState {
   setTerminalTitle: (terminalId: TerminalId, title: string) => void
 
   setTerminalBusy: (terminalId: TerminalId, busy: boolean) => void
-  setTerminalAttention: (terminalId: TerminalId, attention: boolean) => void
+  setTerminalAttention: (
+    terminalId: TerminalId,
+    attention: boolean,
+    meta?: AttentionMeta
+  ) => void
   clearAttention: (terminalId: TerminalId) => void
 
   /** Open the close-confirmation dialog for a terminal. */
@@ -254,6 +277,7 @@ export const useWorkspace = create<WorkspaceState>((set) => ({
   titleByTerminal: {},
   busyByTerminal: {},
   attentionByTerminal: {},
+  attentionMetaByTerminal: {},
   pendingTerminalClose: null,
 
   sidebarWidth: readInitialSidebarWidth(),
@@ -616,6 +640,7 @@ export const useWorkspace = create<WorkspaceState>((set) => ({
       const { [terminalId]: _omittedTitle, ...titleRest } = state.titleByTerminal
       const { [terminalId]: _omittedBusy, ...busyRest } = state.busyByTerminal
       const { [terminalId]: _omittedAttn, ...attnRest } = state.attentionByTerminal
+      const { [terminalId]: _omittedAttnMeta, ...attnMetaRest } = state.attentionMetaByTerminal
       nextActive = wasActive
         ? remaining[0]?.id ?? null
         : state.activeTerminalByProject[projectId]
@@ -631,6 +656,7 @@ export const useWorkspace = create<WorkspaceState>((set) => ({
         titleByTerminal: titleRest,
         busyByTerminal: busyRest,
         attentionByTerminal: attnRest,
+        attentionMetaByTerminal: attnMetaRest,
         // The shell can exit on its own while the confirm dialog is open.
         pendingTerminalClose: pendingCloseAfterRemoval(state.pendingTerminalClose, {
           projectId,
@@ -738,28 +764,42 @@ export const useWorkspace = create<WorkspaceState>((set) => ({
       }
       // A new turn starting clears any pending "needs input" cue.
       const { [terminalId]: _omittedAttn, ...attnRest } = state.attentionByTerminal
+      const { [terminalId]: _omittedMeta, ...metaRest } = state.attentionMetaByTerminal
       return {
         busyByTerminal: { ...state.busyByTerminal, [terminalId]: true },
         attentionByTerminal: attnRest,
+        attentionMetaByTerminal: metaRest,
       }
     }),
 
-  setTerminalAttention: (terminalId, attention) =>
+  setTerminalAttention: (terminalId, attention, meta) =>
     set((state) => {
       const current = !!state.attentionByTerminal[terminalId]
-      if (current === attention) return state
+      const currentMeta = state.attentionMetaByTerminal[terminalId]
+      // The reason can change while attention stays raised — a finished turn
+      // followed by a permission prompt — so a same-flag update still matters.
+      const metaUnchanged =
+        currentMeta?.reason === meta?.reason && currentMeta?.changedAt === meta?.changedAt
+      if (current === attention && metaUnchanged) return state
       if (!attention) {
         const { [terminalId]: _omitted, ...rest } = state.attentionByTerminal
-        return { attentionByTerminal: rest }
+        const { [terminalId]: _omittedMeta, ...metaRest } = state.attentionMetaByTerminal
+        return { attentionByTerminal: rest, attentionMetaByTerminal: metaRest }
       }
-      return { attentionByTerminal: { ...state.attentionByTerminal, [terminalId]: true } }
+      return {
+        attentionByTerminal: { ...state.attentionByTerminal, [terminalId]: true },
+        attentionMetaByTerminal: meta
+          ? { ...state.attentionMetaByTerminal, [terminalId]: meta }
+          : state.attentionMetaByTerminal,
+      }
     }),
 
   clearAttention: (terminalId) =>
     set((state) => {
       if (!state.attentionByTerminal[terminalId]) return state
       const { [terminalId]: _omitted, ...rest } = state.attentionByTerminal
-      return { attentionByTerminal: rest }
+      const { [terminalId]: _omittedMeta, ...metaRest } = state.attentionMetaByTerminal
+      return { attentionByTerminal: rest, attentionMetaByTerminal: metaRest }
     }),
 
   requestTerminalClose: (projectId, terminalId) =>

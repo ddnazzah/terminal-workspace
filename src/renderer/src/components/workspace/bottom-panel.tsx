@@ -2,6 +2,7 @@ import { useCallback, useRef } from 'react'
 import { createProjectTerminal, useWorkspace } from '@renderer/state/store'
 import { HOME_PROJECT_ID, type Project, type TerminalRecord } from '@shared/types'
 import { TerminalPane } from './terminal-pane'
+import { ActivityDot } from '../activity-dot'
 
 interface Props {
   /** The synthesized Home workspace whose project-less terminals this dock hosts. */
@@ -28,6 +29,7 @@ export function BottomPanel({ home, onBell }: Props) {
   const unreadByTerminal = useWorkspace((s) => s.unreadByTerminal)
   const busyByTerminal = useWorkspace((s) => s.busyByTerminal)
   const attentionByTerminal = useWorkspace((s) => s.attentionByTerminal)
+  const attentionMetaByTerminal = useWorkspace((s) => s.attentionMetaByTerminal)
 
   const dragRef = useRef<{ y: number; h: number } | null>(null)
 
@@ -159,24 +161,14 @@ export function BottomPanel({ home, onBell }: Props) {
                     isActive
                       ? 'bg-foreground/8 text-foreground'
                       : 'text-foreground/65 hover:bg-foreground/5 hover:text-foreground',
-                    busy ? 'terminal-item-busy' : '',
-                    attention && !busy ? 'terminal-item-attention' : '',
                   ].join(' ')}
                   title={name}
                 >
-                  <span
-                    className={[
-                      'terminal-item-indicator inline-block w-2 h-2 rounded-full flex-shrink-0',
-                      // Only shows when meaningful; idle keeps a transparent slot.
-                      busy
-                        ? 'bg-accent'
-                        : attention
-                          ? 'bg-red-500'
-                          : unread
-                            ? 'bg-sky-400'
-                            : 'bg-transparent',
-                    ].join(' ')}
-                    aria-hidden
+                  <ActivityDot
+                    busy={busy}
+                    attention={attention}
+                    unread={unread}
+                    meta={attentionMetaByTerminal[t.id]}
                   />
                   <span className={['flex-1 truncate', unread ? 'text-foreground font-medium' : ''].join(' ')}>
                     {name}

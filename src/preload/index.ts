@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import {
   IPC,
+  type AgentHooksStatus,
   type AppState,
   type BoardSettings,
   type BoardSnapshot,
@@ -155,6 +156,11 @@ const api = {
       ipcRenderer.on(IPC.bridge.status, listener)
       return () => ipcRenderer.off(IPC.bridge.status, listener)
     },
+  },
+  agent: {
+    getHooksStatus: (): Promise<AgentHooksStatus> => ipcRenderer.invoke(IPC.agent.status),
+    installHooks: (): Promise<AgentHooksStatus> => ipcRenderer.invoke(IPC.agent.install),
+    uninstallHooks: (): Promise<AgentHooksStatus> => ipcRenderer.invoke(IPC.agent.uninstall),
   },
   system: {
     getVersion: (): Promise<string> => ipcRenderer.invoke(IPC.system.version),

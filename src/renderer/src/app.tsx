@@ -110,7 +110,11 @@ export default function App() {
       const s = useWorkspace.getState()
       // setTerminalBusy(true) also clears attention, so set busy first.
       s.setTerminalBusy(p.id, p.status === 'busy')
-      s.setTerminalAttention(p.id, p.status === 'attention')
+      s.setTerminalAttention(p.id, p.status === 'attention', {
+        reason: p.reason,
+        detail: p.detail,
+        changedAt: p.changedAt,
+      })
       s.setTerminalTitle(p.id, p.title ? stripSpinner(p.title) : '')
 
       const prev = lastActivityStatusRef.current[p.id]

@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { TerminalRecord } from '@shared/types'
+import { ActivityDot } from '../activity-dot'
+import type { AttentionMeta } from '@renderer/state/store'
 
 interface Props {
   terminal: TerminalRecord
@@ -7,6 +9,7 @@ interface Props {
   unread: boolean
   busy?: boolean
   attention?: boolean
+  attentionMeta?: AttentionMeta
   autoTitle?: string
   index: number
   projectId: string
@@ -22,6 +25,7 @@ export function TerminalSidebarItem({
   unread,
   busy,
   attention,
+  attentionMeta,
   autoTitle,
   index,
   projectId,
@@ -83,26 +87,15 @@ export function TerminalSidebarItem({
         active
           ? 'bg-accent/12 text-foreground'
           : 'text-foreground/65 hover:bg-foreground/5 hover:text-foreground',
-        busy ? 'terminal-item-busy' : '',
-        attention && !busy ? 'terminal-item-attention' : '',
         dragOver ? 'shadow-[inset_0_2px_0_0_var(--accent)]' : '',
       ].join(' ')}
       title={displayName}
     >
-      <span
-        className={[
-          'terminal-item-indicator inline-block w-2 h-2 rounded-full flex-shrink-0',
-          // Only shows when it means something; idle keeps a transparent slot so
-          // the label never shifts. Active is conveyed by the row highlight.
-          busy
-            ? 'bg-accent'
-            : attention
-              ? 'bg-red-500'
-              : unread
-                ? 'bg-sky-400'
-                : 'bg-transparent',
-        ].join(' ')}
-        aria-hidden
+      <ActivityDot
+        busy={!!busy}
+        attention={!!attention}
+        unread={unread}
+        meta={attentionMeta}
       />
       {editing ? (
         <input

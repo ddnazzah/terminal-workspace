@@ -222,13 +222,38 @@ export type RunningCommandPayload = {
 }
 
 export type ActivityStatus = 'idle' | 'busy' | 'attention'
+/**
+ * Why a session is asking for the user. Only a first-party agent hook can tell
+ * these apart — from outside, a permission prompt and a finished turn look the
+ * same, because the spinner stops either way.
+ */
+export type AttentionReason = 'permission' | 'turnDone'
 /** Emitted by main when a session's detected activity changes. */
 export type SessionActivityPayload = {
   id: TerminalId
   status: ActivityStatus
   title: string | null
   exitCode: number | null
+  /** Set alongside `status: 'attention'`; null otherwise. */
+  reason: AttentionReason | null
+  /** The agent's own words for why it needs the user, when it said so. */
+  detail: string | null
+  /** When `status` last changed — the renderer derives "stale" from this. */
+  changedAt: number
 }
+/**
+ * State of wTerm's Claude Code hook installation. `listening` is the loopback
+ * relay socket (always up); `installed` is whether the user's Claude settings
+ * actually point at it, which is what the user opts into.
+ */
+export type AgentHooksStatus = {
+  installed: boolean
+  listening: boolean
+  settingsPath: string
+  /** Set when the settings file exists but could not be read or parsed. */
+  error: string | null
+}
+
 /** Sent by the renderer so main can suppress notifications for the on-screen session. */
 export type SetFocusedPayload = { id: TerminalId | null; windowFocused: boolean }
 
@@ -256,6 +281,11 @@ export const IPC = {
     runningCommand: 'terminals:running-command',
     activity: 'terminals:activity',
     setFocused: 'terminals:set-focused',
+  },
+  agent: {
+    status: 'agent:hooks-status',
+    install: 'agent:hooks-install',
+    uninstall: 'agent:hooks-uninstall',
   },
   dialog: {
     pickFolder: 'dialog:pick-folder',

@@ -4,6 +4,7 @@ import { useSettings, DEFAULTS } from '@renderer/state/settings'
 import { useUpdates } from '@renderer/state/updates'
 import { kbd } from '@renderer/lib/platform'
 import type { BridgePairing, BridgeStatus } from '@shared/types'
+import { AgentSignalsPane } from './settings/agent-signals-pane'
 
 interface Props {
   open: boolean
@@ -16,6 +17,7 @@ type CategoryId =
   | 'editor'
   | 'formatting'
   | 'mobile'
+  | 'agents'
   | 'updates'
   | 'about'
 
@@ -25,6 +27,7 @@ const CATEGORIES: { id: CategoryId; label: string }[] = [
   { id: 'editor', label: 'Editor' },
   { id: 'formatting', label: 'Formatting' },
   { id: 'mobile', label: 'Mobile' },
+  { id: 'agents', label: 'Agents' },
   { id: 'updates', label: 'Updates' },
   { id: 'about', label: 'About' },
 ]
@@ -102,6 +105,7 @@ export function SettingsModal({ open, onClose }: Props) {
             {active === 'editor' && <EditorPane />}
             {active === 'formatting' && <FormattingPane />}
             {active === 'mobile' && <MobilePane />}
+            {active === 'agents' && <AgentSignalsPane />}
             {active === 'updates' && <UpdatesPane />}
             {active === 'about' && <AboutPane />}
           </div>

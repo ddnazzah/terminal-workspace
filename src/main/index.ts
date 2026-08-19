@@ -11,6 +11,7 @@ import { registerGitIpc } from './ipc/git'
 import { registerGitHubIpc } from './ipc/github'
 import { registerBridgeIpc } from './ipc/bridge'
 import { registerBoardIpc } from './ipc/board'
+import { registerAgentIpc, startAgentHooks, stopAgentHooks } from './ipc/agent'
 import { BoardScheduler } from './board/scheduler'
 import { IPC } from '@shared/types'
 import { loadState, saveStateNow } from './store/state'
@@ -120,6 +121,7 @@ app.whenReady().then(async () => {
   registerFsIpc()
   registerGitIpc()
   registerGitHubIpc()
+  registerAgentIpc()
   registerUpdater()
 
   createWindow()
@@ -138,6 +140,13 @@ app.whenReady().then(async () => {
   const boardScheduler = new BoardScheduler(ptyManager, notifyBoardChanged)
   registerBoardIpc(boardScheduler, notifyBoardChanged)
   boardScheduler.start()
+
+  // Start the loopback listener that Claude Code's hooks report into. A bind
+  // failure must not take the app down — wTerm falls back to reading window
+  // titles, which is less precise but still works.
+  startAgentHooks(ptyManager).catch((err) =>
+    console.error('[agent-hook] failed to start:', err)
+  )
 
   // Start the mobile bridge. A bind failure (e.g. port in use) must not take the
   // app down — the desktop keeps working without the phone feature.
@@ -159,6 +168,7 @@ app.on('before-quit', (e) => {
   e.preventDefault()
   isQuitting = true
   ptyManager.disposeAll()
+  void stopAgentHooks()
   saveStateNow()
     .catch((err) => console.error('[quit] state save failed', err))
     .finally(() => {

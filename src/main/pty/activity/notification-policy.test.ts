@@ -8,6 +8,10 @@ const base: SessionActivity = {
   title: null,
   commandStartedAt: null,
   lastExitCode: null,
+  reason: null,
+  detail: null,
+  hookDriven: false,
+  changedAt: 0,
 }
 const bg = { windowFocused: false, sessionVisible: false }
 
@@ -73,5 +77,64 @@ describe('decideNotification', () => {
       focus: { windowFocused: true, sessionVisible: false },
     })
     expect(d?.reason).toBe('attention')
+  })
+
+  it('names the agent\'s own reason when it is blocked on permission', () => {
+    // Arrange
+    const prev: SessionActivity = { ...base, mode: 'agent', status: 'busy', hookDriven: true }
+    const next: SessionActivity = {
+      ...prev,
+      status: 'attention',
+      reason: 'permission',
+      detail: 'Claude needs your permission',
+    }
+
+    // Act
+    const d = decideNotification({ prev, next, now: 0, focus: bg })
+
+    // Assert
+    expect(d?.reason).toBe('permission')
+    expect(d?.title).toBe('Agent needs permission')
+    expect(d?.body).toBe('Claude needs your permission')
+  })
+
+  it('distinguishes a finished turn from a permission prompt', () => {
+    const prev: SessionActivity = { ...base, mode: 'agent', status: 'busy', hookDriven: true }
+    const next: SessionActivity = { ...prev, status: 'attention', reason: 'turnDone' }
+
+    const d = decideNotification({ prev, next, now: 0, focus: bg })
+
+    expect(d?.reason).toBe('attention')
+    expect(d?.title).toBe('Agent finished its turn')
+  })
+
+  it('fires again when an agent that finished its turn then asks permission', () => {
+    // Without this, a Stop immediately followed by a permission prompt would be
+    // swallowed — both are `attention`, so only the reason distinguishes them.
+    const prev: SessionActivity = {
+      ...base,
+      mode: 'agent',
+      status: 'attention',
+      reason: 'turnDone',
+      hookDriven: true,
+    }
+    const next: SessionActivity = { ...prev, reason: 'permission', detail: 'Approve edit?' }
+
+    const d = decideNotification({ prev, next, now: 0, focus: bg })
+
+    expect(d?.reason).toBe('permission')
+  })
+
+  it('does not re-fire while an agent sits in the same attention state', () => {
+    const prev: SessionActivity = {
+      ...base,
+      mode: 'agent',
+      status: 'attention',
+      reason: 'turnDone',
+    }
+
+    const d = decideNotification({ prev, next: { ...prev }, now: 5_000, focus: bg })
+
+    expect(d).toBeNull()
   })
 })

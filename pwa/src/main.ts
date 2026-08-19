@@ -2,6 +2,7 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import './styles.css'
 import { setupTouchScroll } from './touch-scroll'
+import { hasViewportHeightChanged, shouldSendResize } from '@shared/viewport-sync'
 import type {
   AppState,
   BridgeClientMessage,
@@ -79,6 +80,8 @@ let term: Terminal | null = null
 let fit: FitAddon | null = null
 let ctrlSticky = false
 let reconnectTimer: number | null = null
+/** Last grid pushed to the PTY, so an unchanged fit stays off the wire. */
+let lastSentSize: { cols: number; rows: number } | null = null
 
 function send(msg: BridgeClientMessage): void {
   if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg))
@@ -181,6 +184,7 @@ function handleServerMessage(msg: BridgeServerMessage): void {
         term.write(msg.snapshot)
         // Push our dimensions so the shared PTY resizes and the running program
         // repaints its live UI at the phone's width.
+        lastSentSize = { cols: term.cols, rows: term.rows }
         send({ type: 'resize', id: msg.id, cols: term.cols, rows: term.rows })
       }
       break
@@ -233,6 +237,10 @@ function attachTerminal(id: TerminalId): void {
   if (ui.currentTermId) send({ type: 'detach', id: ui.currentTermId })
   ui.currentTermId = id
   ui.unread.delete(id)
+  // The dedupe below is per-terminal: a new terminal must be told our size even
+  // when the grid happens to match the one we just left, or it never hands the
+  // phone size authority.
+  lastSentSize = null
   term?.reset()
   send({ type: 'attach', id })
   const proj = currentProject()
@@ -245,7 +253,12 @@ function syncSize(): void {
   if (!fit || !term || !ui.currentTermId) return
   try {
     fit.fit()
-    send({ type: 'resize', id: ui.currentTermId, cols: term.cols, rows: term.rows })
+    const size = { cols: term.cols, rows: term.rows }
+    // Re-sending the size the PTY already has costs a SIGWINCH, and the program
+    // repaints — which scrolls the phone away from what the user was reading.
+    if (!shouldSendResize(lastSentSize, size)) return
+    lastSentSize = size
+    send({ type: 'resize', id: ui.currentTermId, ...size })
   } catch {
     // element not laid out yet
   }
@@ -261,7 +274,15 @@ function syncSize(): void {
 function setupViewport(): void {
   const vv = window.visualViewport
   if (!vv) return
+  let lastHeight: number | null = null
+  // iOS fires `scroll` on the visual viewport throughout a finger drag, even
+  // with the document positionally locked. Both events are still worth
+  // listening to (the keyboard can open without a clean `resize`), but the
+  // height is what actually matters — bail out unless it really moved, or every
+  // swipe would refit xterm and resize the shared PTY mid-gesture.
   const apply = (): void => {
+    if (!hasViewportHeightChanged(lastHeight, vv.height)) return
+    lastHeight = vv.height
     document.documentElement.style.setProperty('--app-h', `${Math.round(vv.height)}px`)
     syncSize()
   }

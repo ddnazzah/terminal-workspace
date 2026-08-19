@@ -4,7 +4,7 @@ export const LONG_COMMAND_MS = 10_000
 // Interrupt / kill: not real failures worth a notification.
 const NON_FAILURE_CODES = new Set([130, 143])
 
-export type NotifyReason = 'attention' | 'done' | 'failed'
+export type NotifyReason = 'permission' | 'attention' | 'done' | 'failed'
 
 export interface NotifyDecision {
   reason: NotifyReason
@@ -30,17 +30,36 @@ function isBackgrounded(focus: FocusContext): boolean {
   return !(focus.windowFocused && focus.sessionVisible)
 }
 
+/**
+ * The agent asked for the user. A permission prompt is worth saying out loud —
+ * it is blocking real work — so it gets its own wording and carries the agent's
+ * own message. A finished turn is the softer "come look at this".
+ */
+function agentDecision(next: SessionActivity): NotifyDecision {
+  if (next.reason === 'permission') {
+    return {
+      reason: 'permission',
+      title: 'Agent needs permission',
+      body: next.detail ?? next.title ?? 'Waiting on your approval',
+    }
+  }
+  return {
+    reason: 'attention',
+    title: 'Agent finished its turn',
+    body: next.detail ?? next.title ?? 'Waiting for input',
+  }
+}
+
 export function decideNotification(input: DecideInput): NotifyDecision | null {
   const { prev, next, now, focus } = input
   if (!isBackgrounded(focus)) return null
 
-  // Agent turn done → attention edge.
-  if (next.mode === 'agent' && prev.status !== 'attention' && next.status === 'attention') {
-    return {
-      reason: 'attention',
-      title: 'Agent needs you',
-      body: next.title ?? 'Waiting for input',
-    }
+  // Agent turn done / blocked → attention edge. A re-entry into attention with a
+  // different reason (finished a turn, then asked permission) is its own event.
+  const enteredAttention = next.status === 'attention' && prev.status !== 'attention'
+  const reasonChanged = next.status === 'attention' && next.reason !== prev.reason
+  if (next.mode === 'agent' && (enteredAttention || reasonChanged)) {
+    return agentDecision(next)
   }
 
   // Shell command finished (busy → idle).

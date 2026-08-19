@@ -11,6 +11,7 @@ import { getDefaultShell, prepareShellIntegration } from './shell-integration'
 import { OscParser } from './activity/osc-parser'
 import { ActivityMachine } from './activity/activity-machine'
 import type { SessionActivity } from './activity/types'
+import type { AgentHookEvent } from '../agent/hook-event'
 import { resolveRelease, resolveResize, type ResizeSource } from './resize-authority'
 
 /** Notified on every session activity transition (for firing notifications). */
@@ -127,10 +128,11 @@ export class PtyManager {
     // Advertise a modern terminal profile. Some TUIs gate richer behaviors
     // (OSC 9;4 taskbar progress, escape-sequence desktop notifications) on a
     // recognized TERM_PROGRAM and fall back to a capability-poor mode without
-    // one. NB: Claude Code 2.x does NOT use these — it reports its working state
-    // through the window-title spinner, which is what actually drives wTerm's
-    // busy indicator (see terminal-pane.tsx). This just keeps us on the capable
-    // path for other programs. TERM is xterm-256color — wTerm's xterm.js front
+    // one. NB: Claude Code 2.x does NOT use these — it reports through its
+    // window title, and (once wTerm's hooks are installed) through the agent
+    // hook relay, which is what actually drives the busy/attention indicator.
+    // This just keeps us on the capable path for other programs. TERM is
+    // xterm-256color — wTerm's xterm.js front
     // end supports 256 colors + truecolor (terminfo for it is universally
     // present), so programs get full color with no multiplexer in between.
     const baseEnv = {
@@ -138,6 +140,11 @@ export class PtyManager {
       TERM: 'xterm-256color',
       TERM_PROGRAM: 'ghostty',
       TERM_PROGRAM_VERSION: '1.1.0',
+      // Identifies this terminal to agent hooks. Claude Code runs its hooks as
+      // children of the agent, which is a child of this shell, so the variable
+      // arrives intact however the agent was launched — typed by hand, through
+      // a shell alias, or dispatched by the board. See main/agent/hook-server.ts.
+      WTERM_TERMINAL_ID: opts.id,
     } as Record<string, string>
     const { args: shellArgs, env: preparedEnv } = prepareShellIntegration(shell, baseEnv)
 
@@ -238,6 +245,19 @@ export class PtyManager {
     }
   }
 
+  /**
+   * Apply a first-party agent hook event to a session. Routed through the same
+   * change path as escape-sequence detection, so the indicator, notifications
+   * and the board all see it identically.
+   */
+  applyAgentEvent(id: TerminalId, event: AgentHookEvent): void {
+    const entry = this.entries.get(id)
+    if (!entry) return
+    const prev = entry.machine.current
+    const next = entry.machine.applyAgent(event, Date.now())
+    if (next !== prev) this.onActivityChange(id, prev, next)
+  }
+
   private onActivityChange(id: TerminalId, prev: SessionActivity, next: SessionActivity): void {
     this.activity.set(id, next)
     const payload: SessionActivityPayload = {
@@ -245,6 +265,9 @@ export class PtyManager {
       status: next.status,
       title: next.title,
       exitCode: next.lastExitCode,
+      reason: next.reason,
+      detail: next.detail,
+      changedAt: next.changedAt,
     }
     this.window?.webContents.send(IPC.terminals.activity, payload)
     for (const sink of this.sinks) sink.onActivity?.(payload)
