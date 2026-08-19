@@ -1,8 +1,25 @@
 import { create } from 'zustand'
 import { decideExternalChange } from '@shared/external-change'
 import { HOME_PROJECT_ID } from '@shared/types'
-import type { Project, ProjectId, TerminalId, TerminalRecord } from '@shared/types'
-import { applyRename, type NameSource } from '@shared/rename'
+import type {
+  AttentionReason,
+  Project,
+  ProjectId,
+  TerminalId,
+  TerminalRecord,
+} from '@shared/types'
+import {
+  pendingCloseAfterRemoval,
+  resolveCloseLabel,
+  type PendingTerminalClose,
+} from './pending-close'
+
+/** Why a terminal is waiting on the user, and since when. */
+export interface AttentionMeta {
+  reason: AttentionReason | null
+  detail: string | null
+  changedAt: number
+}
 import { useSettings } from './settings'
 import { modalSizeFor, clampModalSize } from '@renderer/lib/modal-size'
 
@@ -168,6 +185,14 @@ interface WorkspaceState {
   busyByTerminal: Record<TerminalId, boolean>
   /** Terminals whose agent finished a turn and is waiting on the user (red cue). */
   attentionByTerminal: Record<TerminalId, boolean>
+  /**
+   * Why each waiting terminal is waiting, and since when — only a first-party
+   * agent hook can say (see main/agent). Absent for sessions detected from
+   * window titles alone, so the indicator treats it as optional.
+   */
+  attentionMetaByTerminal: Record<TerminalId, AttentionMeta>
+  /** Terminal awaiting close confirmation; null when no dialog is open. */
+  pendingTerminalClose: PendingTerminalClose | null
 
   sidebarWidth: number
   sidebarCollapsed: boolean
@@ -247,8 +272,7 @@ interface WorkspaceState {
   renameTerminalLocal: (
     projectId: ProjectId,
     terminalId: TerminalId,
-    name: string,
-    source?: NameSource
+    name: string
   ) => void
   setActiveTerminal: (projectId: ProjectId, terminalId: TerminalId | null) => void
   reorderTerminal: (projectId: ProjectId, fromIndex: number, toIndex: number) => void
@@ -262,8 +286,16 @@ interface WorkspaceState {
   setTerminalTitle: (terminalId: TerminalId, title: string) => void
 
   setTerminalBusy: (terminalId: TerminalId, busy: boolean) => void
-  setTerminalAttention: (terminalId: TerminalId, attention: boolean) => void
+  setTerminalAttention: (
+    terminalId: TerminalId,
+    attention: boolean,
+    meta?: AttentionMeta
+  ) => void
   clearAttention: (terminalId: TerminalId) => void
+
+  /** Open the close-confirmation dialog for a terminal. */
+  requestTerminalClose: (projectId: ProjectId, terminalId: TerminalId) => void
+  clearPendingTerminalClose: () => void
 }
 
 export const useWorkspace = create<WorkspaceState>((set) => ({
@@ -275,6 +307,8 @@ export const useWorkspace = create<WorkspaceState>((set) => ({
   titleByTerminal: {},
   busyByTerminal: {},
   attentionByTerminal: {},
+  attentionMetaByTerminal: {},
+  pendingTerminalClose: null,
 
   sidebarWidth: readInitialSidebarWidth(),
   sidebarCollapsed: readInitialSidebarCollapsed(),
@@ -674,6 +708,7 @@ export const useWorkspace = create<WorkspaceState>((set) => ({
       const { [terminalId]: _omittedTitle, ...titleRest } = state.titleByTerminal
       const { [terminalId]: _omittedBusy, ...busyRest } = state.busyByTerminal
       const { [terminalId]: _omittedAttn, ...attnRest } = state.attentionByTerminal
+      const { [terminalId]: _omittedAttnMeta, ...attnMetaRest } = state.attentionMetaByTerminal
       nextActive = wasActive
         ? remaining[0]?.id ?? null
         : state.activeTerminalByProject[projectId]
@@ -689,6 +724,12 @@ export const useWorkspace = create<WorkspaceState>((set) => ({
         titleByTerminal: titleRest,
         busyByTerminal: busyRest,
         attentionByTerminal: attnRest,
+        attentionMetaByTerminal: attnMetaRest,
+        // The shell can exit on its own while the confirm dialog is open.
+        pendingTerminalClose: pendingCloseAfterRemoval(state.pendingTerminalClose, {
+          projectId,
+          terminalId,
+        }),
       }
     })
     if (nextActive !== undefined) {
@@ -712,7 +753,7 @@ export const useWorkspace = create<WorkspaceState>((set) => ({
             ? {
                 ...p,
                 terminals: p.terminals.map((t) =>
-                  t.id === terminalId ? applyRename(t, name, source) : t
+                  t.id === terminalId ? { ...t, name } : t
                 ),
               }
             : p
@@ -803,29 +844,60 @@ export const useWorkspace = create<WorkspaceState>((set) => ({
       }
       // A new turn starting clears any pending "needs input" cue.
       const { [terminalId]: _omittedAttn, ...attnRest } = state.attentionByTerminal
+      const { [terminalId]: _omittedMeta, ...metaRest } = state.attentionMetaByTerminal
       return {
         busyByTerminal: { ...state.busyByTerminal, [terminalId]: true },
         attentionByTerminal: attnRest,
+        attentionMetaByTerminal: metaRest,
       }
     }),
 
-  setTerminalAttention: (terminalId, attention) =>
+  setTerminalAttention: (terminalId, attention, meta) =>
     set((state) => {
       const current = !!state.attentionByTerminal[terminalId]
-      if (current === attention) return state
+      const currentMeta = state.attentionMetaByTerminal[terminalId]
+      // The reason can change while attention stays raised — a finished turn
+      // followed by a permission prompt — so a same-flag update still matters.
+      const metaUnchanged =
+        currentMeta?.reason === meta?.reason && currentMeta?.changedAt === meta?.changedAt
+      if (current === attention && metaUnchanged) return state
       if (!attention) {
         const { [terminalId]: _omitted, ...rest } = state.attentionByTerminal
-        return { attentionByTerminal: rest }
+        const { [terminalId]: _omittedMeta, ...metaRest } = state.attentionMetaByTerminal
+        return { attentionByTerminal: rest, attentionMetaByTerminal: metaRest }
       }
-      return { attentionByTerminal: { ...state.attentionByTerminal, [terminalId]: true } }
+      return {
+        attentionByTerminal: { ...state.attentionByTerminal, [terminalId]: true },
+        attentionMetaByTerminal: meta
+          ? { ...state.attentionMetaByTerminal, [terminalId]: meta }
+          : state.attentionMetaByTerminal,
+      }
     }),
 
   clearAttention: (terminalId) =>
     set((state) => {
       if (!state.attentionByTerminal[terminalId]) return state
       const { [terminalId]: _omitted, ...rest } = state.attentionByTerminal
-      return { attentionByTerminal: rest }
+      const { [terminalId]: _omittedMeta, ...metaRest } = state.attentionMetaByTerminal
+      return { attentionByTerminal: rest, attentionMetaByTerminal: metaRest }
     }),
+
+  requestTerminalClose: (projectId, terminalId) =>
+    set((state) => {
+      const label = resolveCloseLabel(
+        state.projects,
+        state.titleByTerminal,
+        projectId,
+        terminalId
+      )
+      // Already gone (the shell exited between click and dispatch): nothing to
+      // confirm, and prompting about a terminal that no longer exists is worse
+      // than staying silent.
+      if (label === null) return state
+      return { pendingTerminalClose: { projectId, terminalId, label } }
+    }),
+
+  clearPendingTerminalClose: () => set({ pendingTerminalClose: null }),
 }))
 
 /**
@@ -847,6 +919,21 @@ export async function createProjectTerminal(
   const record = await window.api.terminals.create({ projectId, startupCommand, ...opts })
   if (record) useWorkspace.getState().addTerminal(projectId, record)
   return record
+}
+
+/**
+ * Kill a terminal and drop its record everywhere — the mirror of
+ * {@link createProjectTerminal}, and the single funnel every close path runs
+ * through once the user has confirmed. Safe to call for a terminal that has
+ * already exited: `removeTerminalLocal` tolerates a missing terminal.
+ */
+export async function closeProjectTerminal(
+  projectId: ProjectId,
+  terminalId: TerminalId
+): Promise<void> {
+  await window.api.terminals.kill(terminalId)
+  window.api.terminals.removeRecord(projectId, terminalId)
+  useWorkspace.getState().removeTerminalLocal(projectId, terminalId)
 }
 
 // Dev-only: editing this module hot-swaps it, which makes `create()` build a new

@@ -1,9 +1,17 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import {
   IPC,
+  type AgentHooksStatus,
   type AppState,
+  type BoardSettings,
+  type BoardSnapshot,
   type BridgePairing,
   type BridgeStatus,
+  type Card,
+  type CreateCardInput,
+  type MoveCardInput,
+  type Note,
+  type UpdateCardInput,
   type CreatePullRequestInput,
   type CreateTerminalOptions,
   type DeviceFlowPoll,
@@ -116,6 +124,36 @@ const api = {
       return () => ipcRenderer.off(IPC.state.changed, listener)
     },
   },
+  board: {
+    snapshot: (projectId: string): Promise<BoardSnapshot> =>
+      ipcRenderer.invoke(IPC.board.snapshot, projectId),
+    createCard: (input: CreateCardInput): Promise<Card | null> =>
+      ipcRenderer.invoke(IPC.board.createCard, input),
+    updateCard: (input: UpdateCardInput): Promise<void> =>
+      ipcRenderer.invoke(IPC.board.updateCard, input),
+    moveCard: (input: MoveCardInput): Promise<void> =>
+      ipcRenderer.invoke(IPC.board.moveCard, input),
+    deleteCard: (id: string): Promise<void> => ipcRenderer.invoke(IPC.board.deleteCard, id),
+    dispatchNow: (id: string): Promise<void> => ipcRenderer.invoke(IPC.board.dispatchNow, id),
+    setSettings: (projectId: string, patch: Partial<BoardSettings>): Promise<void> =>
+      ipcRenderer.invoke(IPC.board.setSettings, projectId, patch),
+    createNote: (projectId: string, title?: string): Promise<Note | null> =>
+      ipcRenderer.invoke(IPC.board.createNote, projectId, title),
+    updateNote: (id: string, patch: { title?: string; body?: string }): Promise<void> =>
+      ipcRenderer.invoke(IPC.board.updateNote, id, patch),
+    deleteNote: (id: string): Promise<void> => ipcRenderer.invoke(IPC.board.deleteNote, id),
+    promoteNote: (id: string, body?: string): Promise<Card | null> =>
+      ipcRenderer.invoke(IPC.board.promoteNote, id, body),
+    pruneWorktree: (id: string, force?: boolean): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke(IPC.board.pruneWorktree, id, force),
+    // Fired after any board mutation, the scheduler's included, so the board tab
+    // re-reads its snapshot rather than mirroring authoritative state.
+    onChanged: (cb: () => void): (() => void) => {
+      const listener = (): void => cb()
+      ipcRenderer.on(IPC.board.changed, listener)
+      return () => ipcRenderer.off(IPC.board.changed, listener)
+    },
+  },
   bridge: {
     getStatus: (): Promise<BridgeStatus> => ipcRenderer.invoke(IPC.bridge.getStatus),
     getPairing: (): Promise<BridgePairing> => ipcRenderer.invoke(IPC.bridge.getPairing),
@@ -128,6 +166,11 @@ const api = {
       ipcRenderer.on(IPC.bridge.status, listener)
       return () => ipcRenderer.off(IPC.bridge.status, listener)
     },
+  },
+  agent: {
+    getHooksStatus: (): Promise<AgentHooksStatus> => ipcRenderer.invoke(IPC.agent.status),
+    installHooks: (): Promise<AgentHooksStatus> => ipcRenderer.invoke(IPC.agent.install),
+    uninstallHooks: (): Promise<AgentHooksStatus> => ipcRenderer.invoke(IPC.agent.uninstall),
   },
   system: {
     getVersion: (): Promise<string> => ipcRenderer.invoke(IPC.system.version),

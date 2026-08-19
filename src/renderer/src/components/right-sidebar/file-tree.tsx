@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { FsEntry, GitFileStatus, GitFileStatusMap, Project } from '@shared/types'
+import type { FsEntry, GitFileStatusMap, Project } from '@shared/types'
 import { createProjectTerminal, useWorkspace } from '@renderer/state/store'
 import { FileIcon } from './file-icon'
 import { Codicon } from '../codicon'
@@ -7,12 +7,23 @@ import { statusColor } from '@renderer/lib/git-status-color'
 import { dropFolderFor, planMoves, topMostPaths } from '@renderer/lib/file-tree-move'
 import { nextSelection, type SelectionState } from '@renderer/lib/file-tree-selection'
 import { planPaste, type ClipboardMode } from '@renderer/lib/file-tree-paste'
+import { STATUS_BADGE, folderDecoration } from '@renderer/lib/git-decoration'
+import { sliceStatusForRepo } from '@renderer/lib/repo-status'
+import { ChangesList } from './changes-list'
+import { CollapsibleSection } from './collapsible-section'
 
 interface Props {
   project: Project
 }
 
 type ChildrenMap = Record<string, FsEntry[] | undefined>
+
+/**
+ * Agents edit files from the terminal, not through this tree, so nothing tells
+ * us the working copy moved. Re-read git status on a timer while the window is
+ * visible so their changes light up without the user refocusing the app.
+ */
+const GIT_POLL_INTERVAL_MS = 4000
 
 export function FileTree({ project }: Props) {
   const openFile = useWorkspace((s) => s.openFile)
@@ -66,6 +77,10 @@ export function FileTree({ project }: Props) {
     [rootEntries, children, expanded]
   )
 
+  // The explorer spans the whole project, so no repo slicing is needed — every
+  // change under the root belongs in this list.
+  const changes = useMemo(() => sliceStatusForRepo(gitStatus, [], ''), [gitStatus])
+
   const reloadRoot = useCallback(async () => {
     setLoading(true)
     const list = await window.api.fs.list(project.id, '')
@@ -106,6 +121,13 @@ export function FileTree({ project }: Props) {
     const onFocus = () => void reloadGit()
     window.addEventListener('focus', onFocus)
     return () => window.removeEventListener('focus', onFocus)
+  }, [reloadGit])
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void reloadGit()
+    }, GIT_POLL_INTERVAL_MS)
+    return () => window.clearInterval(id)
   }, [reloadGit])
 
   const toggle = useCallback(
@@ -468,6 +490,22 @@ export function FileTree({ project }: Props) {
         </ToolbarButton>
       </div>
 
+      {changes.length > 0 && (
+        <div className="flex-shrink-0">
+          <CollapsibleSection title="Changes" count={changes.length}>
+            <div className="max-h-52 overflow-y-auto">
+              <ChangesList
+                changes={changes}
+                activePath={activeFilePath}
+                onSelect={(change) =>
+                  openFile({ projectId: project.id, path: change.projectPath })
+                }
+              />
+            </div>
+          </CollapsibleSection>
+        </div>
+      )}
+
       <div
         tabIndex={0}
         onKeyDown={onTreeKey}
@@ -659,10 +697,18 @@ function TreeRow({
   // directory, otherwise the containing folder shown via its own row.
   const isDropTarget =
     dropFolder !== null && entry.isDirectory && dropFolder === entry.path
-  const status = entry.isDirectory
-    ? folderStatus(entry.path, gitStatus)
-    : gitStatus[entry.path]
+  const folder = entry.isDirectory ? folderDecoration(entry.path, gitStatus) : null
+  const status = folder ? folder.status : gitStatus[entry.path]
   const color = statusColor(status)
+  // An expanded folder's children carry their own badges — repeating the roll-up
+  // on the parent row would just double-count what's already on screen.
+  const badge = folder
+    ? isOpen || folder.count === 0
+      ? null
+      : String(folder.count)
+    : status
+      ? STATUS_BADGE[status]
+      : null
 
   return (
     <div>
@@ -753,6 +799,19 @@ function TreeRow({
           >
             {entry.name}
           </span>
+          {badge && (
+            <span
+              className="ml-auto pl-2 text-[11px] font-mono shrink-0 tabular-nums"
+              style={{ color }}
+              title={
+                folder
+                  ? `${folder.count} changed file${folder.count === 1 ? '' : 's'}`
+                  : status
+              }
+            >
+              {badge}
+            </span>
+          )}
         </button>
       )}
 
@@ -1026,13 +1085,4 @@ function flattenVisible(
   }
   walk(roots)
   return out
-}
-
-/** A folder is "dirty" if any changed path sits under it. */
-function folderStatus(path: string, map: GitFileStatusMap): GitFileStatus | undefined {
-  const prefix = path + '/'
-  for (const key of Object.keys(map)) {
-    if (key.startsWith(prefix)) return 'modified'
-  }
-  return undefined
 }

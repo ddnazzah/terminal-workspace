@@ -11,6 +11,8 @@ import { getDefaultShell, prepareShellIntegration } from './shell-integration'
 import { OscParser } from './activity/osc-parser'
 import { ActivityMachine } from './activity/activity-machine'
 import type { SessionActivity } from './activity/types'
+import type { AgentHookEvent } from '../agent/hook-event'
+import { resolveRelease, resolveResize, type ResizeSource } from './resize-authority'
 
 /** Notified on every session activity transition (for firing notifications). */
 export type NotifyHook = (id: TerminalId, prev: SessionActivity, next: SessionActivity) => void
@@ -35,6 +37,20 @@ interface PtyEntry {
   /** Per-session activity detection fed from the raw PTY stream. */
   parser: OscParser
   machine: ActivityMachine
+  /**
+   * Last size the desktop asked for. While a phone is the active viewer it owns
+   * the PTY size (so the running program renders for the phone), and desktop
+   * resizes are recorded here but not applied — they're restored when the phone
+   * stops viewing.
+   */
+  desktopSize: { cols: number; rows: number }
+  /** True while a connected phone is the size authority for this terminal. */
+  bridgeOwned: boolean
+  /**
+   * Dimensions the PTY currently has, so a resize request that changes nothing
+   * is dropped instead of raising a needless SIGWINCH at the running program.
+   */
+  appliedSize: { cols: number; rows: number } | null
 }
 
 /**
@@ -48,6 +64,7 @@ export interface PtySink {
   onData?(p: TerminalDataPayload): void
   onExit?(p: TerminalExitPayload): void
   onCreate?(id: TerminalId): void
+  onActivity?(p: SessionActivityPayload): void
 }
 
 export class PtyManager {
@@ -111,10 +128,11 @@ export class PtyManager {
     // Advertise a modern terminal profile. Some TUIs gate richer behaviors
     // (OSC 9;4 taskbar progress, escape-sequence desktop notifications) on a
     // recognized TERM_PROGRAM and fall back to a capability-poor mode without
-    // one. NB: Claude Code 2.x does NOT use these — it reports its working state
-    // through the window-title spinner, which is what actually drives wTerm's
-    // busy indicator (see terminal-pane.tsx). This just keeps us on the capable
-    // path for other programs. TERM is xterm-256color — wTerm's xterm.js front
+    // one. NB: Claude Code 2.x does NOT use these — it reports through its
+    // window title, and (once wTerm's hooks are installed) through the agent
+    // hook relay, which is what actually drives the busy/attention indicator.
+    // This just keeps us on the capable path for other programs. TERM is
+    // xterm-256color — wTerm's xterm.js front
     // end supports 256 colors + truecolor (terminfo for it is universally
     // present), so programs get full color with no multiplexer in between.
     const baseEnv = {
@@ -122,6 +140,11 @@ export class PtyManager {
       TERM: 'xterm-256color',
       TERM_PROGRAM: 'ghostty',
       TERM_PROGRAM_VERSION: '1.1.0',
+      // Identifies this terminal to agent hooks. Claude Code runs its hooks as
+      // children of the agent, which is a child of this shell, so the variable
+      // arrives intact however the agent was launched — typed by hand, through
+      // a shell alias, or dispatched by the board. See main/agent/hook-server.ts.
+      WTERM_TERMINAL_ID: opts.id,
     } as Record<string, string>
     const { args: shellArgs, env: preparedEnv } = prepareShellIntegration(shell, baseEnv)
 
@@ -154,6 +177,10 @@ export class PtyManager {
       injectFallback: null,
       parser: new OscParser(),
       machine: new ActivityMachine(),
+      desktopSize: { cols, rows },
+      bridgeOwned: false,
+      // The PTY was spawned at these dimensions, so that is what it already has.
+      appliedSize: { cols, rows },
     }
     this.entries.set(opts.id, entry)
     for (const sink of this.sinks) sink.onCreate?.(opts.id)
@@ -218,6 +245,19 @@ export class PtyManager {
     }
   }
 
+  /**
+   * Apply a first-party agent hook event to a session. Routed through the same
+   * change path as escape-sequence detection, so the indicator, notifications
+   * and the board all see it identically.
+   */
+  applyAgentEvent(id: TerminalId, event: AgentHookEvent): void {
+    const entry = this.entries.get(id)
+    if (!entry) return
+    const prev = entry.machine.current
+    const next = entry.machine.applyAgent(event, Date.now())
+    if (next !== prev) this.onActivityChange(id, prev, next)
+  }
+
   private onActivityChange(id: TerminalId, prev: SessionActivity, next: SessionActivity): void {
     this.activity.set(id, next)
     const payload: SessionActivityPayload = {
@@ -225,9 +265,12 @@ export class PtyManager {
       status: next.status,
       title: next.title,
       exitCode: next.lastExitCode,
-      isAgent: next.mode === 'agent',
+      reason: next.reason,
+      detail: next.detail,
+      changedAt: next.changedAt,
     }
     this.window?.webContents.send(IPC.terminals.activity, payload)
+    for (const sink of this.sinks) sink.onActivity?.(payload)
     this.notifyHook?.(id, prev, next)
   }
 
@@ -240,11 +283,39 @@ export class PtyManager {
     entry?.pty.write(data)
   }
 
-  resize(id: TerminalId, cols: number, rows: number): void {
+  /**
+   * Resize a PTY. A phone that is actively viewing a terminal becomes the size
+   * authority (`source: 'bridge'`) so the running program renders for the phone,
+   * not the desktop's wide grid. While a phone owns the size, desktop resizes
+   * are remembered (to restore later) but not applied. See {@link releaseBridgeSize}.
+   */
+  resize(id: TerminalId, cols: number, rows: number, source: ResizeSource = 'desktop'): void {
     const entry = this.entries.get(id)
     if (!entry) return
+    const { next, applied } = resolveResize(entry, cols, rows, source)
+    entry.desktopSize = next.desktopSize
+    entry.bridgeOwned = next.bridgeOwned
+    entry.appliedSize = next.appliedSize
+    if (applied) this.applyResize(entry, applied.cols, applied.rows)
+  }
+
+  /**
+   * Hand size authority back to the desktop after the last phone stops viewing
+   * a terminal, restoring the desktop's last-known dimensions so its grid stops
+   * being pinned to the phone's width. No-op unless a phone currently owns it.
+   */
+  releaseBridgeSize(id: TerminalId): void {
+    const entry = this.entries.get(id)
+    if (!entry) return
+    const { next, applied } = resolveRelease(entry)
+    entry.bridgeOwned = next.bridgeOwned
+    entry.appliedSize = next.appliedSize
+    if (applied) this.applyResize(entry, applied.cols, applied.rows)
+  }
+
+  private applyResize(entry: PtyEntry, cols: number, rows: number): void {
     try {
-      entry.pty.resize(Math.max(1, Math.floor(cols)), Math.max(1, Math.floor(rows)))
+      entry.pty.resize(cols, rows)
     } catch {
       // ignore — happens if pty is already gone
     }

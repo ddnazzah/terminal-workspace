@@ -1,7 +1,15 @@
 import { app } from 'electron'
 import { promises as fs } from 'node:fs'
 import { join } from 'node:path'
-import { HOME_PROJECT_ID, type AppState, type Project, type ProjectId, type TerminalRecord } from '@shared/types'
+import {
+  HOME_PROJECT_ID,
+  STATE_VERSION,
+  type AppState,
+  type Project,
+  type ProjectId,
+  type TerminalRecord,
+} from '@shared/types'
+import { migrateState } from './migrate'
 
 const SAVE_DEBOUNCE_MS = 500
 
@@ -25,10 +33,13 @@ function ensureHome(projects: Project[]): Project[] {
 }
 
 let cache: AppState = {
-  version: 1,
+  version: STATE_VERSION,
   selectedProjectId: null,
   projects: [],
   activeTerminalByProject: {},
+  cards: [],
+  notes: [],
+  boardByProject: {},
 }
 let writeTimer: NodeJS.Timeout | null = null
 let pendingWrite: Promise<void> | null = null
@@ -40,23 +51,13 @@ function statePath(): string {
 export async function loadState(): Promise<AppState> {
   try {
     const raw = await fs.readFile(statePath(), 'utf-8')
-    const parsed = JSON.parse(raw) as AppState
-    if (parsed?.version === 1 && Array.isArray(parsed.projects)) {
-      // Every persisted tab is restorable: Claude sessions and captured agents
-      // resume, and plain shells come back as plain shells — the workspace
-      // keeps its shape (see renderer restore planning in lib/restore-plan.ts).
-      const projects = parsed.projects.map((p) => ({
-        ...p,
-        terminals: p.terminals ?? [],
-      }))
-      const survivingIds = new Set(projects.flatMap((p) => p.terminals.map((t) => t.id)))
-      const activeTerminalByProject = Object.fromEntries(
-        Object.entries(parsed.activeTerminalByProject ?? {}).filter(
-          ([, id]) => id != null && survivingIds.has(id)
-        )
-      )
-      cache = { ...parsed, projects, activeTerminalByProject }
-    }
+    // Every persisted tab is restorable: Claude sessions and captured agents
+    // resume, and plain shells come back as plain shells — the workspace keeps
+    // its shape (see renderer restore planning in lib/restore-plan.ts). Version
+    // normalisation, including reading a file written by a newer build without
+    // dropping the workspace, lives in migrate.ts.
+    const migrated = migrateState(JSON.parse(raw))
+    if (migrated) cache = migrated
   } catch (err: unknown) {
     if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
       console.error('[state] failed to load:', err)

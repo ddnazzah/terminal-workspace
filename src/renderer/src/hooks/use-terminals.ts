@@ -1,10 +1,9 @@
 import { useCallback } from 'react'
 import { createProjectTerminal, useWorkspace } from '@renderer/state/store'
 import type { Project } from '@shared/types'
-import type { NameSource } from '@shared/rename'
 
 export function useTerminals(project: Project | null) {
-  const removeTerminalLocal = useWorkspace((s) => s.removeTerminalLocal)
+  const requestTerminalClose = useWorkspace((s) => s.requestTerminalClose)
   const renameTerminalLocal = useWorkspace((s) => s.renameTerminalLocal)
   const setActiveTerminal = useWorkspace((s) => s.setActiveTerminal)
   const activeId = useWorkspace((s) =>
@@ -16,21 +15,21 @@ export function useTerminals(project: Project | null) {
     return createProjectTerminal(project.id)
   }, [project])
 
+  // Asks for confirmation rather than closing outright; the actual kill runs
+  // through closeProjectTerminal once the user confirms (see app.tsx).
   const close = useCallback(
-    async (terminalId: string) => {
+    (terminalId: string) => {
       if (!project) return
-      await window.api.terminals.kill(terminalId)
-      window.api.terminals.removeRecord(project.id, terminalId)
-      removeTerminalLocal(project.id, terminalId)
+      requestTerminalClose(project.id, terminalId)
     },
-    [project, removeTerminalLocal]
+    [project, requestTerminalClose]
   )
 
   const rename = useCallback(
-    async (terminalId: string, name: string, source: NameSource = 'user') => {
+    async (terminalId: string, name: string) => {
       if (!project) return
-      renameTerminalLocal(project.id, terminalId, name, source)
-      await window.api.terminals.rename(project.id, terminalId, name, source)
+      renameTerminalLocal(project.id, terminalId, name)
+      await window.api.terminals.rename(project.id, terminalId, name)
     },
     [project, renameTerminalLocal]
   )

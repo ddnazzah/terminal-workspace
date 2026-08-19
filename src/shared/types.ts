@@ -73,11 +73,139 @@ export interface Project {
   isDefault?: boolean
 }
 
+/** Current persisted state schema version. */
+export const STATE_VERSION = 2
+
 export interface AppState {
-  version: 1
+  version: number
   selectedProjectId: ProjectId | null
   projects: Project[]
   activeTerminalByProject?: Record<ProjectId, TerminalId | null>
+  /** Board cards, flat and scoped by projectId (see Card). */
+  cards?: Card[]
+  /** Per-project markdown scratchpad notes. */
+  notes?: Note[]
+  /** Per-project board/worker configuration. */
+  boardByProject?: Record<ProjectId, BoardSettings>
+}
+
+// ---- Project board ----
+
+export type CardStatus = 'backlog' | 'ready' | 'in-progress' | 'review' | 'done'
+
+/** The five columns, in board order. */
+export const CARD_STATUSES: readonly CardStatus[] = [
+  'backlog',
+  'ready',
+  'in-progress',
+  'review',
+  'done',
+]
+
+export const CARD_STATUS_LABELS: Record<CardStatus, string> = {
+  backlog: 'Backlog',
+  ready: 'Ready',
+  'in-progress': 'In Progress',
+  review: 'Review',
+  done: 'Done',
+}
+
+/** A dispatched worker: the tab, the worktree, and the branch it owns. */
+export interface CardRun {
+  terminalId: TerminalId
+  worktreePath: string
+  branch: string
+  startedAt: string
+  endedAt?: string
+  /**
+   * False until the worker's activity first reports `busy`. A freshly created
+   * PTY reads as idle before the agent starts, so a run only becomes
+   * completable once it has actually begun working.
+   */
+  started: boolean
+  /** True while the agent is ringing the BEL for input (activity `attention`). */
+  needsInput?: boolean
+}
+
+export interface CardLogEntry {
+  at: string
+  text: string
+}
+
+/** Most recent log entries kept per card (state.json is a whole-file write). */
+export const CARD_LOG_LIMIT = 50
+
+export interface Card {
+  id: string
+  projectId: ProjectId
+  /** per-project, monotonic, human-facing ("#42") */
+  number: number
+  title: string
+  /** markdown; becomes the dispatched prompt */
+  body: string
+  status: CardStatus
+  /** sort key within a column; lower dispatches first */
+  order: number
+  createdAt: string
+  /** set on dispatch, cleared when the card returns to backlog/ready */
+  run?: CardRun
+  /** append-only history, capped at {@link CARD_LOG_LIMIT} */
+  log: CardLogEntry[]
+}
+
+export interface Note {
+  id: string
+  projectId: ProjectId
+  title: string
+  body: string
+  updatedAt: string
+}
+
+export interface BoardSettings {
+  /** 0 disables automation — the board becomes a plain board */
+  workerCount: number
+  agentCommand: string
+  /** supports {{number}}, {{title}}, {{cardFile}}, {{branch}} */
+  promptTemplate: string
+  /** absolute path; empty = the project path's parent */
+  worktreeRoot: string
+}
+
+export const DEFAULT_PROMPT_TEMPLATE =
+  'Read {{cardFile}} and implement the task described there. You are on branch {{branch}}.'
+
+export const DEFAULT_BOARD_SETTINGS: BoardSettings = {
+  workerCount: 0,
+  agentCommand: 'claude',
+  promptTemplate: DEFAULT_PROMPT_TEMPLATE,
+  worktreeRoot: '',
+}
+
+/** Everything the board tab needs for one project. */
+export interface BoardSnapshot {
+  cards: Card[]
+  notes: Note[]
+  settings: BoardSettings
+}
+
+export interface CreateCardInput {
+  projectId: ProjectId
+  title: string
+  body?: string
+  status?: CardStatus
+}
+
+export interface UpdateCardInput {
+  id: string
+  title?: string
+  body?: string
+}
+
+export interface MoveCardInput {
+  id: string
+  status: CardStatus
+  /** index within the destination column; appended when omitted */
+  index?: number
 }
 
 export interface CreateTerminalOptions {
@@ -118,15 +246,38 @@ export type RunningCommandPayload = {
 }
 
 export type ActivityStatus = 'idle' | 'busy' | 'attention'
+/**
+ * Why a session is asking for the user. Only a first-party agent hook can tell
+ * these apart — from outside, a permission prompt and a finished turn look the
+ * same, because the spinner stops either way.
+ */
+export type AttentionReason = 'permission' | 'turnDone'
 /** Emitted by main when a session's detected activity changes. */
 export type SessionActivityPayload = {
   id: TerminalId
   status: ActivityStatus
   title: string | null
   exitCode: number | null
-  /** True when the title comes from an agent (Claude Code etc.), not a plain shell. */
-  isAgent: boolean
+  /** Set alongside `status: 'attention'`; null otherwise. */
+  reason: AttentionReason | null
+  /** The agent's own words for why it needs the user, when it said so. */
+  detail: string | null
+  /** When `status` last changed — the renderer derives "stale" from this. */
+  changedAt: number
 }
+/**
+ * State of wTerm's Claude Code hook installation. `listening` is the loopback
+ * relay socket (always up); `installed` is whether the user's Claude settings
+ * actually point at it, which is what the user opts into.
+ */
+export type AgentHooksStatus = {
+  installed: boolean
+  listening: boolean
+  settingsPath: string
+  /** Set when the settings file exists but could not be read or parsed. */
+  error: string | null
+}
+
 /** Sent by the renderer so main can suppress notifications for the on-screen session. */
 export type SetFocusedPayload = { id: TerminalId | null; windowFocused: boolean }
 
@@ -155,6 +306,11 @@ export const IPC = {
     activity: 'terminals:activity',
     setFocused: 'terminals:set-focused',
   },
+  agent: {
+    status: 'agent:hooks-status',
+    install: 'agent:hooks-install',
+    uninstall: 'agent:hooks-uninstall',
+  },
   dialog: {
     pickFolder: 'dialog:pick-folder',
   },
@@ -168,6 +324,23 @@ export const IPC = {
   /** Full-state push from main to renderer, fired after bridge-originated mutations. */
   state: {
     changed: 'state:changed',
+  },
+  /** Project board + notes (see src/main/board). */
+  board: {
+    snapshot: 'board:snapshot',
+    createCard: 'board:create-card',
+    updateCard: 'board:update-card',
+    moveCard: 'board:move-card',
+    deleteCard: 'board:delete-card',
+    dispatchNow: 'board:dispatch-now',
+    createNote: 'board:create-note',
+    updateNote: 'board:update-note',
+    deleteNote: 'board:delete-note',
+    promoteNote: 'board:promote-note',
+    setSettings: 'board:set-settings',
+    pruneWorktree: 'board:prune-worktree',
+    /** main → renderer push after any board mutation (scheduler included) */
+    changed: 'board:changed',
   },
   /** Mobile-bridge control + reachability (see src/main/bridge). */
   bridge: {
@@ -280,6 +453,7 @@ export type BridgeServerMessage =
   | { type: 'hello'; state: AppState }
   | { type: 'attached'; id: TerminalId; snapshot: string }
   | { type: 'data'; id: TerminalId; data: string }
+  | { type: 'title'; id: TerminalId; title: string | null }
   | { type: 'exit'; id: TerminalId; exitCode: number; signal?: number }
   | { type: 'state'; state: AppState }
   | { type: 'error'; message: string }

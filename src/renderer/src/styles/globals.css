@@ -125,37 +125,36 @@ body {
   border-radius: 4px;
 }
 
-/* Sidebar item — pulses an accent halo around the left-edge indicator while an
-   agent is actively working (its title spinner is animating). The halo stops the
-   instant the turn ends; a finished turn that awaits input switches to the red
-   "attention" pulse below instead. */
-.terminal-item-busy .terminal-item-indicator {
-  animation: terminal-item-busy-halo 1.6s ease-in-out infinite;
+/* Sidebar / dock indicator halos. The colour says what state a session is in
+   (see lib/terminal-indicator.ts); the halo says it is live and unanswered.
+   `stale` deliberately does NOT pulse — a slow breathing ring reads as "still
+   thinking", and a request nobody has answered for minutes is the opposite. */
+.activity-dot--working {
+  animation: activity-halo 1.6s ease-in-out infinite;
+  --halo-color: var(--accent);
 }
 
-@keyframes terminal-item-busy-halo {
+.activity-dot--needsInput {
+  animation: activity-halo 1.4s ease-in-out infinite;
+  --halo-color: #fb923c;
+}
+
+.activity-dot--blocked {
+  animation: activity-halo 1.1s ease-in-out infinite;
+  --halo-color: #ef4444;
+}
+
+.activity-dot--stale {
+  box-shadow: 0 0 0 2px color-mix(in oklab, #b91c1c 35%, transparent);
+}
+
+@keyframes activity-halo {
   0%,
   100% {
     box-shadow: 0 0 0 0 transparent;
   }
   50% {
-    box-shadow: 0 0 6px 2px color-mix(in oklab, var(--accent) 55%, transparent);
-  }
-}
-
-/* Sidebar item — a red halo while the agent has finished its turn and is waiting
-   on the user. Cleared as soon as the terminal is viewed/focused. */
-.terminal-item-attention .terminal-item-indicator {
-  animation: terminal-item-attention-halo 1.4s ease-in-out infinite;
-}
-
-@keyframes terminal-item-attention-halo {
-  0%,
-  100% {
-    box-shadow: 0 0 0 0 transparent;
-  }
-  50% {
-    box-shadow: 0 0 6px 2px color-mix(in oklab, #ef4444 65%, transparent);
+    box-shadow: 0 0 6px 2px color-mix(in oklab, var(--halo-color) 60%, transparent);
   }
 }
 

@@ -11,6 +11,7 @@ import { TerminalPane } from './components/workspace/terminal-pane'
 import { EmptyState } from './components/workspace/empty-state'
 import { SettingsModal } from './components/settings-modal'
 import { QuickOpen } from './components/quick-open/quick-open'
+import { ConfirmDialog } from './components/confirm-dialog'
 import { UpdateBanner } from './components/update-banner'
 import { TopBar } from './components/top-bar'
 import { StatusBar } from './components/status-bar'
@@ -19,15 +20,17 @@ import { EditorOverlay } from './components/workspace/editor-surface'
 import { BottomPanel } from './components/workspace/bottom-panel'
 import { useProjects } from './hooks/use-projects'
 import { useWindowZoom } from './lib/zoom'
-import { createProjectTerminal, useWorkspace } from '@renderer/state/store'
+import { closeProjectTerminal, createProjectTerminal, useWorkspace } from '@renderer/state/store'
 import { useGithub } from './state/github'
-import { resolveDisplayTitle } from './lib/terminal-title'
-import { resolveAutoRename } from './lib/auto-rename'
+import { BOARD_TAB_PATH, NOTES_TAB_PATH } from '@renderer/lib/tab-uri'
+import { stripSpinner } from '@shared/terminal-title'
 import { HOME_PROJECT_ID, type ActivityStatus, type Project, type TerminalRecord } from '@shared/types'
 
 export default function App() {
   const { projects, selectedProject, addProject } = useProjects()
-  const removeTerminalLocal = useWorkspace((s) => s.removeTerminalLocal)
+  const requestTerminalClose = useWorkspace((s) => s.requestTerminalClose)
+  const pendingTerminalClose = useWorkspace((s) => s.pendingTerminalClose)
+  const clearPendingTerminalClose = useWorkspace((s) => s.clearPendingTerminalClose)
   const activeTerminalByProject = useWorkspace((s) => s.activeTerminalByProject)
   const selectProject = useWorkspace((s) => s.selectProject)
   const setActiveTerminal = useWorkspace((s) => s.setActiveTerminal)
@@ -70,6 +73,15 @@ export default function App() {
     }
   }, [setBottomPanelOpen])
 
+  // Board and notes open as tabs in the editor surface, alongside file tabs.
+  const openFile = useWorkspace((s) => s.openFile)
+  const openBoard = useCallback(() => {
+    if (selectedProject) openFile({ projectId: selectedProject.id, path: BOARD_TAB_PATH })
+  }, [selectedProject, openFile])
+  const openNotes = useCallback(() => {
+    if (selectedProject) openFile({ projectId: selectedProject.id, path: NOTES_TAB_PATH })
+  }, [selectedProject, openFile])
+
   const pendingFocusRef = useRef<{ projectId: string; terminalId: string } | null>(null)
 
   const activeTerminalId = selectedProject
@@ -111,20 +123,12 @@ export default function App() {
       const s = useWorkspace.getState()
       // setTerminalBusy(true) also clears attention, so set busy first.
       s.setTerminalBusy(p.id, p.status === 'busy')
-      s.setTerminalAttention(p.id, p.status === 'attention')
-      s.setTerminalTitle(p.id, resolveDisplayTitle(p))
-
-      // Keep the persistent name in sync with the agent's latest task so the
-      // tab doesn't fall back to a stale name once the agent goes idle.
-      const project = s.projects.find((proj) => proj.terminals.some((t) => t.id === p.id))
-      const terminal = project?.terminals.find((t) => t.id === p.id)
-      const nextName = terminal ? resolveAutoRename(p, terminal) : null
-      if (project && terminal && nextName) {
-        s.renameTerminalLocal(project.id, terminal.id, nextName, 'auto')
-        window.api.terminals.rename(project.id, terminal.id, nextName, 'auto').catch((err) => {
-          console.error('[terminals] auto-rename failed:', err)
-        })
-      }
+      s.setTerminalAttention(p.id, p.status === 'attention', {
+        reason: p.reason,
+        detail: p.detail,
+        changedAt: p.changedAt,
+      })
+      s.setTerminalTitle(p.id, p.title ? stripSpinner(p.title) : '')
 
       const prev = lastActivityStatusRef.current[p.id]
       lastActivityStatusRef.current[p.id] = p.status
@@ -221,15 +225,14 @@ export default function App() {
       },
       'terminal.close': () => {
         if (!selectedProject || !activeTerminalId) return
-        void window.api.terminals.kill(activeTerminalId)
-        window.api.terminals.removeRecord(selectedProject.id, activeTerminalId)
-        removeTerminalLocal(selectedProject.id, activeTerminalId)
+        // Ask first — closing ends the shell and anything running in it.
+        requestTerminalClose(selectedProject.id, activeTerminalId)
       },
     }),
     [
       selectedProject,
       activeTerminalId,
-      removeTerminalLocal,
+      requestTerminalClose,
       toggleSidebar,
       toggleRightSidebar,
       toggleHomeTerminal,
@@ -252,7 +255,6 @@ export default function App() {
     // The quick-open palette owns the keyboard while it is open.
     enabled: !quickOpenOpen && !paletteOpen,
   })
-
   const handleBell = useCallback(
     (project: Project, terminal: TerminalRecord, kind: 'bell' | 'attention') => {
       const isVisible =
@@ -346,6 +348,9 @@ export default function App() {
         terminalOpen={bottomPanelOpen}
         onToggleTerminal={toggleHomeTerminal}
         onOpenSettings={() => setSettingsOpen(true)}
+        onOpenBoard={openBoard}
+        onOpenNotes={openNotes}
+        projectActionsDisabled={!selectedProject}
       />
       <div className="flex flex-1 min-h-0 gap-1.5 py-1.5">
         {!sidebarCollapsed && <ProjectList />}
@@ -393,7 +398,29 @@ export default function App() {
             setPaletteOpen(true)
           }}
         />
-      )}
+      )}      <ConfirmDialog
+        open={!!pendingTerminalClose}
+        title="Close terminal?"
+        message={
+          <>
+            Close{' '}
+            <span className="text-foreground/90 font-medium">{pendingTerminalClose?.label}</span>?
+            This ends the shell and anything running in it.
+          </>
+        }
+        confirmLabel="Close"
+        danger
+        onConfirm={() => {
+          if (pendingTerminalClose) {
+            void closeProjectTerminal(
+              pendingTerminalClose.projectId,
+              pendingTerminalClose.terminalId
+            )
+          }
+          clearPendingTerminalClose()
+        }}
+        onCancel={clearPendingTerminalClose}
+      />
       <UpdateBanner />
     </div>
   )

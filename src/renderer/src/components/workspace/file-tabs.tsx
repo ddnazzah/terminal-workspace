@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { tabKey, useWorkspace, type OpenedFile } from '@renderer/state/store'
 import { decodeDiffTab, diffTabLabel } from '@renderer/lib/diff-tab'
+import { parseTabPath } from '@renderer/lib/tab-uri'
+import { useBoard } from '@renderer/hooks/use-board'
 import { FileIcon } from '../right-sidebar/file-icon'
 
 interface Props {
@@ -20,6 +22,9 @@ export function FileTabs({ projectId }: Props) {
     [openFiles, projectId]
   )
   const activePath = activeFileByProject[projectId] ?? null
+  // Note tabs are titled by their note, which is renamed from inside the tab.
+  const { snapshot } = useBoard(projectId)
+  const notes = snapshot.notes
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -60,10 +65,20 @@ export function FileTabs({ projectId }: Props) {
     >
       {projectTabs.map((file, i) => {
         const isActive = file.path === activePath
-        // A diff tab's path is an encoded descriptor, not a filename.
+        // Virtual tabs (board, notes) and diff tabs both carry an encoded
+        // path rather than a filename; each names itself.
+        const target = parseTabPath(file.path)
         const diff = decodeDiffTab(file.path)
-        const name = diff ? diffTabLabel(diff) : (file.path.split('/').pop() ?? file.path)
+        const name =
+          target.kind === 'board'
+            ? 'Board'
+            : target.kind === 'note'
+              ? notes.find((n) => n.id === target.noteId)?.title || 'Untitled note'
+              : diff
+                ? diffTabLabel(diff)
+                : (file.path.split('/').pop() ?? file.path)
         const state = fileStates[tabKey(file)]
+        // Virtual tabs autosave and have no file state, so they are never dirty.
         const dirty = state?.kind === 'text' && state.current !== state.saved
         return (
           <div

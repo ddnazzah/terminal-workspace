@@ -11,6 +11,11 @@ interface Props {
   terminalOpen: boolean
   onToggleTerminal: () => void
   onOpenSettings: () => void
+  /** Open the project board tab; disabled when no project is selected. */
+  onOpenBoard: () => void
+  /** Open the project notes tab; disabled when no project is selected. */
+  onOpenNotes: () => void
+  projectActionsDisabled?: boolean
 }
 
 /**
@@ -26,6 +31,9 @@ export function TopBar({
   terminalOpen,
   onToggleTerminal,
   onOpenSettings,
+  onOpenBoard,
+  onOpenNotes,
+  projectActionsDisabled = false,
 }: Props) {
   return (
     <header
@@ -77,6 +85,37 @@ export function TopBar({
       </div>
 
       <div className="flex items-center gap-1 flex-shrink-0">
+        <button
+          type="button"
+          onClick={onOpenBoard}
+          disabled={projectActionsDisabled}
+          aria-label="Open board"
+          title="Project board"
+          className="flex items-center justify-center w-7 h-7 rounded-md text-foreground/55 hover:text-foreground hover:bg-foreground/10 transition-colors disabled:opacity-30 disabled:hover:bg-transparent"
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <rect x="3" y="4" width="5" height="16" rx="1" />
+            <rect x="10" y="4" width="5" height="10" rx="1" />
+            <rect x="17" y="4" width="4" height="13" rx="1" />
+          </svg>
+        </button>
+
+        <button
+          type="button"
+          onClick={onOpenNotes}
+          disabled={projectActionsDisabled}
+          aria-label="Open notes"
+          title="Notes"
+          className="flex items-center justify-center w-7 h-7 rounded-md text-foreground/55 hover:text-foreground hover:bg-foreground/10 transition-colors disabled:opacity-30 disabled:hover:bg-transparent"
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M5 3h11l4 4v14H5z" />
+            <line x1="9" y1="9" x2="15" y2="9" />
+            <line x1="9" y1="13" x2="15" y2="13" />
+            <line x1="9" y1="17" x2="13" y2="17" />
+          </svg>
+        </button>
+
         <button
           type="button"
           onClick={onToggleTerminal}
