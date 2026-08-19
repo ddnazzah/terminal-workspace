@@ -1,8 +1,17 @@
 # Changelog
 
-## Unreleased
+## 0.7.0
 
 ### Added
+
+- **Project board**: cards with auto-dispatch to Claude workers, plus notes.
+  Board and note tabs ride the normal tab machinery under a `wterm://` scheme,
+  so ordering, ⌘1–9, drag-reorder and close all work unchanged.
+- **Agent signals**: a local hook server Claude Code posts lifecycle events to,
+  installable from Settings → Agent Signals, so session activity comes from the
+  agent itself rather than terminal-output heuristics. One shared indicator
+  function keeps the sidebar, project row and bottom dock in agreement.
+- **Close confirmation**: ⌘W asks before ending a shell and whatever runs in it.
 
 - **Explorer**: drag-and-drop move with indent guides; multi-select (shift range,
   cmd toggle, shift+arrow); delete acting on the whole selection; cut/copy/paste
