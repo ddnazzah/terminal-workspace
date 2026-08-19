@@ -10,6 +10,15 @@ describe('stripSpinner', () => {
     expect(stripSpinner('✳ Running tests')).toBe('Running tests')
   })
 
+  test('removes the circle frames current Claude Code animates with', () => {
+    // The regression: these are what 2.1.235 actually writes, and leaving them
+    // in renders a half-black circle flickering beside the terminal name.
+    expect(stripSpinner('◐ OK')).toBe('OK')
+    expect(stripSpinner('◑ Exploring the codebase')).toBe('Exploring the codebase')
+    expect(stripSpinner('◒ Claude Code')).toBe('Claude Code')
+    expect(stripSpinner('◓ OK')).toBe('OK')
+  })
+
   test('leaves an undecorated title untouched', () => {
     expect(stripSpinner('claude — main')).toBe('claude — main')
   })

@@ -57,11 +57,19 @@ export function isPulsing(state: IndicatorState): boolean {
   return state === 'working' || state === 'needsInput' || state === 'blocked'
 }
 
-/** Tailwind background class for the dot. */
+/**
+ * Shape and colour for the dot.
+ *
+ * Shape carries the meaning, colour only refines it: a **hollow ring** means
+ * work is in flight and nothing is being asked of you, a **filled dot** means
+ * something wants you. That way the two most common states can't be confused
+ * at a glance — reading "yellow vs orange" in an 8px circle is a bad ask, but
+ * hollow vs solid is legible from across the screen.
+ */
 export function indicatorColor(state: IndicatorState): string {
   switch (state) {
     case 'working':
-      return 'bg-accent'
+      return 'bg-transparent border-2 border-accent'
     case 'blocked':
       return 'bg-red-500'
     case 'needsInput':

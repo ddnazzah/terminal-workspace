@@ -125,10 +125,11 @@ body {
   border-radius: 4px;
 }
 
-/* Sidebar / dock indicator halos. The colour says what state a session is in
-   (see lib/terminal-indicator.ts); the halo says it is live and unanswered.
-   `stale` deliberately does NOT pulse — a slow breathing ring reads as "still
-   thinking", and a request nobody has answered for minutes is the opposite. */
+/* Sidebar / dock indicator halos. Shape says whether anything is being asked of
+   the user (hollow = working, filled = wants you), colour says which kind, and
+   the halo says it is live (see lib/terminal-indicator.ts). `stale` deliberately
+   does NOT pulse — a slow breathing ring reads as "still thinking", and a
+   request nobody has answered for minutes is the opposite of that. */
 .activity-dot--working {
   animation: activity-halo 1.6s ease-in-out infinite;
   --halo-color: var(--accent);

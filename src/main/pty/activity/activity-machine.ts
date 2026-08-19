@@ -1,31 +1,27 @@
 import { IDLE_ACTIVITY, type OscEvent, type SessionActivity } from './types'
 import type { AgentHookEvent } from '../../agent/hook-event'
+import { READY_GLYPH, WORKING_GLYPHS } from '@shared/terminal-title'
 
 // How wTerm reads an agent's window title.
 //
-// Claude Code writes "<glyph> <task>" and the glyph carries the state. Measured
-// against 2.1.235 by running it under a pty and reading the OSC 0 sequences:
-//
-//   ◐ Claude Code   ◑ OK     working  (the glyph rotates every frame)
-//   ✳ Claude Code   ✳ OK     idle, waiting on the user
-//
-// So ✳ is the *resting* mark, not a spinner frame — reading it as work is what
-// left every agent session pinned "busy" and made the attention cue fire at
-// meaningless moments. Older builds spun with braille frames, which still count.
+// The glyph alphabet lives in @shared/terminal-title, shared with the stripper
+// that turns a title into a tab label — the two must never disagree. ✳ is the
+// *resting* mark, not a working frame; reading it as work is what left every
+// agent session pinned "busy" and made the attention cue fire meaninglessly.
 //
 // The working set is an explicit allow-list rather than "any leading symbol",
 // because plenty of shells title their window `~/some/path` and a `~` must not
 // read as an agent at work.
-const WORKING_GLYPH = /^[⠀-⣿◐-◓◴-◷◰-◳◜-◟]/
-const READY_GLYPH = /^✳/
+const WORKING_PREFIX = new RegExp(`^[${WORKING_GLYPHS}]`)
+const READY_PREFIX = new RegExp(`^${READY_GLYPH}`)
 // A title that names the agent but carries no glyph at all — still an agent.
 const AGENT_BRANDING = /claude code/i
 
 type TitleReading = 'working' | 'ready' | null
 
 function readTitle(title: string): TitleReading {
-  if (READY_GLYPH.test(title)) return 'ready'
-  if (WORKING_GLYPH.test(title)) return 'working'
+  if (READY_PREFIX.test(title)) return 'ready'
+  if (WORKING_PREFIX.test(title)) return 'working'
   if (AGENT_BRANDING.test(title)) return 'ready'
   return null
 }
