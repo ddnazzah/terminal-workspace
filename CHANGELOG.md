@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.7.1
+
+### Fixed
+
+- **Agent titles**: the spinner stripper knew braille frames and `✳` but not the
+  circle frames (`◐◑◒◓`) current Claude Code animates with, so a working agent
+  rendered as "◐ OK" in the sidebar with the glyph flickering beside the name.
+  The detector and the stripper now share one alphabet and cannot drift apart.
+
+### Changed
+
+- **Session indicator**: `working` is a hollow ring instead of a filled dot.
+  Shape now carries the meaning — hollow means work is in flight, filled means
+  something wants you — so it no longer rests on telling accent yellow from
+  orange in an 8px circle.
+
 ## 0.7.0
 
 ### Added
