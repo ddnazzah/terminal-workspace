@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { decideExternalChange } from '@shared/external-change'
 import { HOME_PROJECT_ID } from '@shared/types'
 import type { Project, ProjectId, TerminalId, TerminalRecord } from '@shared/types'
 import { applyRename, type NameSource } from '@shared/rename'
@@ -66,7 +67,16 @@ export const tabKey = (f: OpenedFile): FileTabKey => `${f.projectId}::${f.path}`
 
 export type FileLoadState =
   | { kind: 'loading' }
-  | { kind: 'text'; current: string; saved: string }
+  | {
+      kind: 'text'
+      current: string
+      saved: string
+      /**
+       * Set when the file changed on disk while this tab had unsaved edits.
+       * The user's text is kept; they choose whether to discard it.
+       */
+      conflictWith?: string | null
+    }
   | { kind: 'binary' }
   | { kind: 'error'; message: string }
 
@@ -214,6 +224,8 @@ interface WorkspaceState {
   closeFile: (file: OpenedFile) => void
   setActiveFile: (projectId: string, path: string | null) => void
   setFileState: (file: OpenedFile, state: FileLoadState) => void
+  /** Apply an on-disk change to an open tab: silent reload, or flag a conflict. */
+  applyExternalChange: (file: OpenedFile, content: string | null) => void
   setFileContent: (file: OpenedFile, content: string) => void
   markFileSaved: (file: OpenedFile, content: string) => void
 
@@ -452,6 +464,36 @@ export const useWorkspace = create<WorkspaceState>((set) => ({
       activeFileByProject: { ...state.activeFileByProject, [projectId]: path },
     })),
 
+  applyExternalChange: (file, content) =>
+    set((state) => {
+      const key = tabKey(file)
+      const prev = state.fileStates[key]
+      if (!prev || prev.kind !== 'text') return {}
+
+      const action = decideExternalChange({
+        onDisk: content,
+        saved: prev.saved,
+        current: prev.current,
+      })
+      if (action === 'ignore') return {}
+
+      if (action === 'reload' && content !== null) {
+        return {
+          fileStates: {
+            ...state.fileStates,
+            [key]: { kind: 'text', current: content, saved: content },
+          },
+        }
+      }
+
+      // conflict or deleted — keep the user's text, record what disk holds.
+      return {
+        fileStates: {
+          ...state.fileStates,
+          [key]: { ...prev, conflictWith: content },
+        },
+      }
+    }),
   setFileState: (file, fileState) =>
     set((state) => ({
       fileStates: { ...state.fileStates, [tabKey(file)]: fileState },

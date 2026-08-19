@@ -197,6 +197,8 @@ export const IPC = {
     open: 'fs:open',
     reveal: 'fs:reveal',
     saveTempPaste: 'fs:save-temp-paste',
+    watchOpen: 'fs:watch-open',
+    externalChange: 'fs:external-change',
     walk: 'fs:walk',
   },
   git: {
@@ -339,6 +341,15 @@ export interface SearchHit {
   column: number
   /** The full matched line, indentation preserved. */
   text: string
+}
+
+/** Emitted by main when a file the renderer has open changed on disk. */
+export interface ExternalChangePayload {
+  projectId: ProjectId
+  /** Project-relative path, forward slashes. */
+  path: string
+  /** New content, or null when the file was deleted. */
+  content: string | null
 }
 
 export interface WalkResult {

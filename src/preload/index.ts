@@ -21,6 +21,7 @@ import {
   type GitStatusEntry,
   type MediaPayload,
   type RepoRef,
+  type ExternalChangePayload,
   type SearchHit,
   type TerminalDataPayload,
   type TerminalExitPayload,
@@ -179,6 +180,13 @@ const api = {
       ipcRenderer.invoke(IPC.fs.open, projectId, relPath),
     reveal: (projectId: ProjectId, relPath: string): Promise<void> =>
       ipcRenderer.invoke(IPC.fs.reveal, projectId, relPath),
+    watchOpen: (projectId: ProjectId, relPaths: string[]): Promise<void> =>
+      ipcRenderer.invoke(IPC.fs.watchOpen, projectId, relPaths),
+    onExternalChange: (cb: (payload: ExternalChangePayload) => void): (() => void) => {
+      const handler = (_e: unknown, payload: ExternalChangePayload): void => cb(payload)
+      ipcRenderer.on(IPC.fs.externalChange, handler)
+      return () => ipcRenderer.removeListener(IPC.fs.externalChange, handler)
+    },
     saveTempPaste: (data: Uint8Array, ext: string): Promise<string | null> =>
       ipcRenderer.invoke(IPC.fs.saveTempPaste, data, ext),
     pathForFile: (file: File): string => webUtils.getPathForFile(file),

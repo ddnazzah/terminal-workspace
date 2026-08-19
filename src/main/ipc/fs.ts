@@ -14,6 +14,10 @@ import {
 } from '@shared/types'
 import { mimeTypeFor } from '@shared/media-type'
 import { getProject } from '../store/state'
+import { OpenFileWatcher } from '../fs/watch-open-files'
+
+/** One watcher per renderer, keyed by webContents id. */
+const openFileWatchers = new Map<number, OpenFileWatcher>()
 import { walkProjectFiles } from './walk-project'
 
 // Hard cap on a single pasted/dropped blob — pastes from screenshot tools land
@@ -333,6 +337,48 @@ export function registerFsIpc(): void {
     if (!project) return { files: [], truncated: false }
     return walkProjectFiles(project.path)
   })
+
+  // One watcher per window: the renderer sends the full set of open files
+  // whenever it changes, and main reports back any that change on disk.
+  ipcMain.handle(
+    IPC.fs.watchOpen,
+    async (e, projectId: ProjectId, relPaths: string[]): Promise<void> => {
+      const project = getProject(projectId)
+      if (!project) return
+
+      const absolute: string[] = []
+      const relByAbs = new Map<string, string>()
+      for (const rel of relPaths) {
+        const abs = resolveSafe(project.path, rel)
+        if (!abs) continue
+        absolute.push(abs)
+        relByAbs.set(abs, rel)
+      }
+
+      let watcher = openFileWatchers.get(e.sender.id)
+      if (!watcher) {
+        watcher = new OpenFileWatcher(async (absPath) => {
+          const rel = relByAbs.get(absPath)
+          if (rel === undefined) return
+          let content: string | null = null
+          try {
+            content = await fs.readFile(absPath, 'utf-8')
+          } catch {
+            content = null // deleted or unreadable
+          }
+          if (e.sender.isDestroyed()) return
+          e.sender.send(IPC.fs.externalChange, { projectId, path: rel, content })
+        })
+        openFileWatchers.set(e.sender.id, watcher)
+        e.sender.once('destroyed', () => {
+          watcher?.dispose()
+          openFileWatchers.delete(e.sender.id)
+        })
+      }
+
+      watcher.setPaths(absolute)
+    }
+  )
 
   ipcMain.handle(
     IPC.fs.saveTempPaste,

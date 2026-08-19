@@ -19,6 +19,10 @@
   whole-word and regex toggles, results grouped by file, replace-in-files, and clicking a result opens the
   file scrolled to the matching line.
 
+- **Editor**: open files are watched for external changes. A clean tab reloads
+  silently; a tab with unsaved edits shows a conflict banner offering the disk
+  version or your own. Useful when an agent edits a file you have open.
+
 ### Changed
 
 - Editor adopts VS Code's own defaults — sticky scroll, bracket-pair

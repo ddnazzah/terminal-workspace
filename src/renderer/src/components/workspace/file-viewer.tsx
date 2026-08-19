@@ -74,6 +74,19 @@ export function FileViewer({ projectId }: Props) {
     [markFileSaved]
   )
 
+  // Keep main's watcher in step with what this project has open.
+  const applyExternalChange = useWorkspace((s) => s.applyExternalChange)
+  useEffect(() => {
+    const paths = projectTabs.filter((f) => !isDiffTab(f.path)).map((f) => f.path)
+    void window.api.fs.watchOpen(projectId, paths)
+  }, [projectId, projectTabs])
+
+  useEffect(() => {
+    return window.api.fs.onExternalChange(({ projectId: pid, path, content }) => {
+      applyExternalChange({ projectId: pid, path }, content)
+    })
+  }, [applyExternalChange])
+
   // Dispose Monaco models for files that are no longer open (any project).
   useEffect(() => {
     const live = new Set(openFiles.map(tabKey))
@@ -173,6 +186,50 @@ function EditorPane({
         }
       }
     : undefined
+
+  if (state.conflictWith !== undefined && state.conflictWith !== null) {
+    return (
+      <div className="flex h-full flex-col">
+        <ConflictBanner
+          onKeepMine={() => onChange(file, state.current)}
+          onUseDisk={() => {
+            // Adopt the on-disk text as both current and saved, clearing the
+            // conflict without writing anything back.
+            onChange(file, state.conflictWith as string)
+            void onSave(file, state.conflictWith as string)
+          }}
+        />
+        <div className="min-h-0 flex-1">
+          <MonacoEditor
+            fileKey={tabKey(file)}
+            filename={name}
+            initialContent={state.current}
+            onChange={(text) => onChange(file, text)}
+            onSave={(text) => void onSave(file, text)}
+            format={format}
+          />
+        </div>
+      </div>
+    )
+  }
+
+  if (state.conflictWith === null) {
+    return (
+      <div className="flex h-full flex-col">
+        <DeletedBanner />
+        <div className="min-h-0 flex-1">
+          <MonacoEditor
+            fileKey={tabKey(file)}
+            filename={name}
+            initialContent={state.current}
+            onChange={(text) => onChange(file, text)}
+            onSave={(text) => void onSave(file, text)}
+            format={format}
+          />
+        </div>
+      </div>
+    )
+  }
 
   return (
     <MonacoEditor
@@ -336,4 +393,59 @@ function extOf(p: string): string {
   const name = p.split('/').pop() ?? p
   const i = name.lastIndexOf('.')
   return i < 0 ? '' : name.slice(i + 1).toLowerCase()
+}
+
+function ConflictBanner({
+  onKeepMine,
+  onUseDisk,
+}: {
+  onKeepMine: () => void
+  onUseDisk: () => void
+}) {
+  return (
+    <div
+      className="flex shrink-0 items-center gap-2 px-3 py-1.5 text-[12px]"
+      style={{
+        background: 'var(--vscode-input-background)',
+        borderBottom: '1px solid var(--vscode-gitDecoration-conflictingResourceForeground)',
+        color: 'var(--vscode-sideBar-foreground)',
+      }}
+    >
+      <span>This file changed on disk while you had unsaved edits.</span>
+      <button
+        type="button"
+        onClick={onUseDisk}
+        className="ml-auto shrink-0 rounded px-2 py-0.5 text-[11px]"
+        style={{
+          background: 'var(--vscode-button-background)',
+          color: 'var(--vscode-button-foreground)',
+        }}
+      >
+        Use version on disk
+      </button>
+      <button
+        type="button"
+        onClick={onKeepMine}
+        className="shrink-0 rounded px-2 py-0.5 text-[11px]"
+        style={{ background: 'var(--vscode-list-hoverBackground)' }}
+      >
+        Keep mine
+      </button>
+    </div>
+  )
+}
+
+function DeletedBanner() {
+  return (
+    <div
+      className="shrink-0 px-3 py-1.5 text-[12px]"
+      style={{
+        background: 'var(--vscode-input-background)',
+        borderBottom: '1px solid var(--vscode-gitDecoration-deletedResourceForeground)',
+        color: 'var(--vscode-sideBar-foreground)',
+      }}
+    >
+      This file was deleted on disk. Saving will recreate it.
+    </div>
+  )
 }
