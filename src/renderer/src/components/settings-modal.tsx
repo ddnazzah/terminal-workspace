@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { KeybindingsPane } from './settings/keybindings-pane'
 import QRCode from 'qrcode'
 import { useSettings, DEFAULTS } from '@renderer/state/settings'
 import { useUpdates } from '@renderer/state/updates'
@@ -15,6 +16,7 @@ type CategoryId =
   | 'terminal'
   | 'editor'
   | 'formatting'
+  | 'keybindings'
   | 'mobile'
   | 'updates'
   | 'about'
@@ -24,6 +26,7 @@ const CATEGORIES: { id: CategoryId; label: string }[] = [
   { id: 'terminal', label: 'Terminal' },
   { id: 'editor', label: 'Editor' },
   { id: 'formatting', label: 'Formatting' },
+  { id: 'keybindings', label: 'Keyboard Shortcuts' },
   { id: 'mobile', label: 'Mobile' },
   { id: 'updates', label: 'Updates' },
   { id: 'about', label: 'About' },
@@ -101,6 +104,7 @@ export function SettingsModal({ open, onClose }: Props) {
             {active === 'terminal' && <TerminalPane />}
             {active === 'editor' && <EditorPane />}
             {active === 'formatting' && <FormattingPane />}
+            {active === 'keybindings' && <KeybindingsPane />}
             {active === 'mobile' && <MobilePane />}
             {active === 'updates' && <UpdatesPane />}
             {active === 'about' && <AboutPane />}

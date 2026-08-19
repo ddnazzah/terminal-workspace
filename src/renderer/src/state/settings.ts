@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import type { UserBinding } from '@renderer/lib/keybinding-overrides'
 
 export interface EditorSettings {
   fontSize: number
@@ -161,9 +162,53 @@ interface SettingsState {
   updateTerminal: (patch: Partial<TerminalSettings>) => void
   updateMobile: (patch: Partial<MobileSettings>) => void
   updateAgentRestore: (patch: Partial<AgentRestoreSettings>) => void
+  /** User keybinding overrides, layered over DEFAULT_BINDINGS. */
+  keybindings: UserBinding[]
+  setKeybinding: (command: string, chord: string, when?: string) => void
+  resetKeybindings: () => void
+}
+
+const KEYBINDINGS_STORAGE_KEY = 'tw:keybindings'
+
+function readStoredKeybindings(): UserBinding[] {
+  try {
+    const raw = localStorage.getItem(KEYBINDINGS_STORAGE_KEY)
+    const parsed = raw ? JSON.parse(raw) : null
+    // Ignore anything malformed rather than letting one bad entry throw at
+    // startup and take every shortcut down with it.
+    return Array.isArray(parsed)
+      ? parsed.filter((b) => typeof b?.command === 'string' && typeof b?.chord === 'string')
+      : []
+  } catch {
+    return []
+  }
+}
+
+function persistKeybindings(bindings: UserBinding[]): void {
+  try {
+    localStorage.setItem(KEYBINDINGS_STORAGE_KEY, JSON.stringify(bindings))
+  } catch {
+    // ignore
+  }
 }
 
 export const useSettings = create<SettingsState>((set) => ({
+  keybindings: readStoredKeybindings(),
+  setKeybinding: (command, chord, when) =>
+    set((state) => {
+      // One override per command: drop any earlier entry before appending.
+      const next = [
+        ...state.keybindings.filter((b) => b.command !== command),
+        { command, chord, ...(when ? { when } : {}) },
+      ]
+      persistKeybindings(next)
+      return { keybindings: next }
+    }),
+  resetKeybindings: () =>
+    set(() => {
+      persistKeybindings([])
+      return { keybindings: [] }
+    }),
   editor: readStored(),
   terminal: readStoredTerminal(),
   mobile: readStoredMobile(),

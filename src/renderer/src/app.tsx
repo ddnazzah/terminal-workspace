@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useKeybindings, type CommandHandlers } from '@renderer/hooks/use-keybindings'
 import { CONTEXT, DEFAULT_BINDINGS } from '@renderer/lib/commands'
+import { mergeBindings } from '@renderer/lib/keybinding-overrides'
+import { useSettings } from '@renderer/state/settings'
 import { CommandPalette } from '@renderer/components/command-palette'
 import { ProjectList } from './components/sidebar/project-list'
 import { RightSidebar } from './components/right-sidebar/right-sidebar'
@@ -237,8 +239,14 @@ export default function App() {
     ]
   )
 
+  const userBindings = useSettings((s) => s.keybindings)
+  const activeBindings = useMemo(
+    () => mergeBindings(DEFAULT_BINDINGS, userBindings),
+    [userBindings]
+  )
+
   useKeybindings({
-    bindings: DEFAULT_BINDINGS,
+    bindings: activeBindings,
     handlers: commandHandlers,
     activeContexts: commandContexts,
     // The quick-open palette owns the keyboard while it is open.
