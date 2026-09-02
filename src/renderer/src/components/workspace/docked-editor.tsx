@@ -32,7 +32,10 @@ export function DockedEditor({ projectId, onClose, children }: Props) {
 
   return (
     <div ref={hostRef} className="flex flex-row h-full min-w-0">
-      <div className="flex-1 min-w-0 overflow-hidden">{children}</div>
+      {/* A flex column, not a bare block: the terminal area sizes itself with
+          `flex-1` and its panes are absolutely positioned, so a non-flex slot
+          collapses it to a ~16px sliver and the split looks empty. */}
+      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">{children}</div>
       <div
         role="separator"
         aria-orientation="vertical"
