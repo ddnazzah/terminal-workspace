@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.7.2
+
+### Added
+
+- **Changes | File tabs**: opening a file with uncommitted work gives its tab a
+  strip of two panes — Changes (the diff) first and selected by default, then
+  File (the editable source). An unchanged file renders exactly as before. The
+  diff is HEAD against the working tree, so the answer to "what changed since
+  the last commit?" does not depend on what is staged; Source Control keeps its
+  narrower per-group diffs.
+
+### Fixed
+
+- **Side-by-side mode**: the docked editor's left slot was a plain block, so the
+  terminal collapsed to a 16px sliver and the split looked empty. The terminal
+  now fills its half.
+- **Floating editor size**: 92% x 92% of the viewport instead of 78% x 82%, and
+  a size saved from a smaller window is now grown instead of sticking.
+- **Confirm dialog** is centred rather than pinned near the top.
+- **Editor position** survives toggling between a file's Changes and File panes.
+
 ## 0.7.1
 
 ### Fixed
