@@ -1,7 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import * as monaco from 'monaco-editor'
 import { languageForFilename } from '@renderer/lib/monaco-language'
-import { diffSidesFor, type GitGroupKind, type GitRev } from '@renderer/lib/git-diff-sides'
+import {
+  diffSidesFor,
+  fileDiffSides,
+  type GitGroupKind,
+  type GitRev,
+} from '@renderer/lib/git-diff-sides'
 import type { GitChangeRow } from '@renderer/lib/git-groups'
 
 interface Props {
@@ -9,20 +14,26 @@ interface Props {
   /** Repo path relative to the project root; '' for the project root. */
   repoRel: string
   row: GitChangeRow
-  group: GitGroupKind
+  /**
+   * The Source Control group the row was clicked in. Omit for a file tab's
+   * Changes pane, which compares HEAD against the working tree instead.
+   */
+  group?: GitGroupKind
+  /** Changes when the file is saved, forcing both sides to be re-read. */
+  revision?: string
 }
 
 /**
  * Side-by-side diff for a Source Control row, rendered with Monaco's diff
  * editor. Which two revisions are compared is decided by `diffSidesFor`.
  */
-export function DiffViewer({ projectId, repoRel, row, group }: Props) {
+export function DiffViewer({ projectId, repoRel, row, group, revision }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const editorRef = useRef<monaco.editor.IStandaloneDiffEditor | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
-  const sides = diffSidesFor(row, group)
+  const sides = group ? diffSidesFor(row, group) : fileDiffSides(row)
 
   useEffect(() => {
     let disposed = false
@@ -82,7 +93,7 @@ export function DiffViewer({ projectId, repoRel, row, group }: Props) {
         editorRef.current = null
       }
     }
-  }, [projectId, repoRel, row.path, row.status, row.isUntracked, group, sides.left, sides.right])
+  }, [projectId, repoRel, row.path, row.status, row.isUntracked, group, revision, sides.left, sides.right])
 
   if (error) {
     return (

@@ -44,6 +44,9 @@ const DOCK_SPLIT_KEY = 'tw:dock-split-ratio'
 
 export type EditorViewMode = 'docked' | 'modal' | 'fullscreen'
 
+/** The two views a file tab offers once the file has uncommitted changes. */
+export type FilePane = 'changes' | 'file'
+
 const readEditorViewMode = (): EditorViewMode => {
   const raw = localStorage.getItem(EDITOR_VIEW_MODE_KEY)
   return raw === 'modal' || raw === 'fullscreen' || raw === 'docked' ? raw : 'modal'
@@ -253,6 +256,13 @@ interface WorkspaceState {
   applyExternalChange: (file: OpenedFile, content: string | null) => void
   setFileContent: (file: OpenedFile, content: string) => void
   markFileSaved: (file: OpenedFile, content: string) => void
+
+  /**
+   * Which pane a changed file's tab is showing: its diff, or its source.
+   * Absent means Changes, the default for a file that has any.
+   */
+  filePaneByTab: Record<string, FilePane>
+  setFilePane: (file: OpenedFile, pane: FilePane) => void
 
   setProjects: (
     projects: Project[],
@@ -471,6 +481,12 @@ export const useWorkspace = create<WorkspaceState>((set) => ({
       }
     }),
 
+  filePaneByTab: {},
+  setFilePane: (file, pane) =>
+    set((state) => ({
+      filePaneByTab: { ...state.filePaneByTab, [tabKey(file)]: pane },
+    })),
+
   closeFile: (file) =>
     set((state) => {
       const key = tabKey(file)
@@ -484,11 +500,13 @@ export const useWorkspace = create<WorkspaceState>((set) => ({
             .at(-1)?.path ?? null
         : state.activeFileByProject[file.projectId] ?? null
       const { [key]: _omit, ...rest } = state.fileStates
+      const { [key]: _omitPane, ...restPanes } = state.filePaneByTab
       const remainingForProject = remaining.filter((f) => f.projectId === file.projectId)
       return {
         openFiles: remaining,
         activeFileByProject: { ...state.activeFileByProject, [file.projectId]: nextActive },
         fileStates: rest,
+        filePaneByTab: restPanes,
         fileModalOpen: remainingForProject.length === 0 ? false : state.fileModalOpen,
       }
     }),

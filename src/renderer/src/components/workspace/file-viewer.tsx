@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { MAX_TEXT_FILE_LABEL } from '@shared/types'
-import { tabKey, useWorkspace, type OpenedFile } from '@renderer/state/store'
+import { tabKey, useWorkspace, type FileLoadState, type OpenedFile } from '@renderer/state/store'
 import { useSettings } from '@renderer/state/settings'
 import { formattableParser, formatText } from '@renderer/lib/formatter'
 import { isVirtualTab, noteTabPath, parseTabPath } from '@renderer/lib/tab-uri'
@@ -12,6 +12,7 @@ import { MediaViewer } from './media-viewer'
 import { mediaKindFor } from '@shared/media-type'
 import { DiffViewer } from './diff-viewer'
 import { decodeDiffTab, isDiffTab } from '@renderer/lib/diff-tab'
+import { FilePanes } from './file-panes'
 
 const MARKDOWN_EXTS = new Set(['md', 'mdx', 'markdown'])
 
@@ -154,7 +155,6 @@ function EditorPane({
   onChange: (file: OpenedFile, content: string) => void
 }) {
   const state = useWorkspace((s) => s.fileStates[tabKey(file)])
-  const editorSettings = useSettings((s) => s.editor)
 
   const diff = decodeDiffTab(file.path)
   if (diff) {
@@ -188,6 +188,31 @@ function EditorPane({
   if (state.kind === 'error') {
     return <Placeholder title="Couldn’t open file" hint={state.message} />
   }
+
+  // A file with uncommitted changes gets Changes | File tabs around its
+  // surface; an unchanged one renders exactly as before.
+  return (
+    <FilePanes file={file} revision={state.saved}>
+      <FileSurface file={file} state={state} media={media} onSave={onSave} onChange={onChange} />
+    </FilePanes>
+  )
+}
+
+/** The file's own view: editor, markdown preview, or SVG preview. */
+function FileSurface({
+  file,
+  state,
+  media,
+  onSave,
+  onChange,
+}: {
+  file: OpenedFile
+  state: Extract<FileLoadState, { kind: 'text' }>
+  media: ReturnType<typeof mediaKindFor>
+  onSave: (file: OpenedFile, text: string) => Promise<void>
+  onChange: (file: OpenedFile, content: string) => void
+}) {
+  const editorSettings = useSettings((s) => s.editor)
 
   const name = file.path.split('/').pop() ?? file.path
 

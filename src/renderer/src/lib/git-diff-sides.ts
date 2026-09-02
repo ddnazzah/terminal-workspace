@@ -59,3 +59,26 @@ function sides(left: GitRev | null, right: GitRev | null): DiffSides {
     rightLabel: right ? LABELS[right] : '',
   }
 }
+
+/**
+ * The two revisions behind a file tab's Changes pane: HEAD against what is on
+ * disk.
+ *
+ * Source Control splits a file across Staged and Changes because it acts on
+ * each axis separately. An editor tab does not — it asks the simpler question
+ * "what has changed in this file since the last commit?", and staging state
+ * must not change that answer. So a file staged, then edited again shows both
+ * halves here, where `diffSidesFor('changes')` would show only the unstaged
+ * part.
+ */
+export function fileDiffSides(row: GitChangeRow): DiffSides {
+  // Nothing in HEAD to compare against for a file that did not exist there.
+  if (row.status === 'untracked' || row.status === 'added') {
+    return sides(null, 'worktree')
+  }
+  // Gone from disk, so there is no right-hand side to read.
+  if (row.status === 'deleted') {
+    return sides('HEAD', null)
+  }
+  return sides('HEAD', 'worktree')
+}

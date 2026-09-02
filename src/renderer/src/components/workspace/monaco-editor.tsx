@@ -136,9 +136,15 @@ export function MonacoEditor({ fileKey, filename, initialContent, onChange, onSa
     })
     return () => {
       sub.dispose()
+      // Save before disposing, not only on the fileKey swap above: the editor
+      // is now unmounted whenever a tab flips to its Changes pane, and losing
+      // the cursor and scroll position on every toggle is jarring.
+      if (currentKeyRef.current) {
+        viewStates.set(currentKeyRef.current, editor.saveViewState())
+        attachedKeys.delete(currentKeyRef.current)
+      }
       editor.dispose()
       editorRef.current = null
-      if (currentKeyRef.current) attachedKeys.delete(currentKeyRef.current)
       currentKeyRef.current = null
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

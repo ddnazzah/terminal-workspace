@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import type { GitChangeRow } from './git-groups'
-import { diffSidesFor } from './git-diff-sides'
+import { diffSidesFor, fileDiffSides } from './git-diff-sides'
 
 function row(over: Partial<GitChangeRow> & { path: string }): GitChangeRow {
   return { status: 'modified', isUntracked: false, ...over }
@@ -62,5 +62,48 @@ describe('diffSidesFor — merge group', () => {
       left: 'HEAD',
       right: 'worktree',
     })
+  })
+})
+
+describe('fileDiffSides — the whole-file view behind an editor tab', () => {
+  test('compares HEAD against the working tree', () => {
+    // The file tab asks "what has changed in this file since the last commit?",
+    // which is one answer regardless of what happens to be staged.
+    const sides = fileDiffSides(row({ path: 'a.ts' }))
+
+    expect(sides).toEqual({
+      left: 'HEAD',
+      right: 'worktree',
+      leftLabel: 'HEAD',
+      rightLabel: 'Working Tree',
+    })
+  })
+
+  test('an untracked file has no HEAD side', () => {
+    const sides = fileDiffSides(row({ path: 'a.ts', status: 'untracked', isUntracked: true }))
+
+    expect(sides.left).toBeNull()
+    expect(sides.right).toBe('worktree')
+  })
+
+  test('a file added since HEAD has no HEAD side', () => {
+    const sides = fileDiffSides(row({ path: 'a.ts', status: 'added' }))
+
+    expect(sides.left).toBeNull()
+    expect(sides.right).toBe('worktree')
+  })
+
+  test('a deleted file has no working-tree side', () => {
+    const sides = fileDiffSides(row({ path: 'a.ts', status: 'deleted' }))
+
+    expect(sides.left).toBe('HEAD')
+    expect(sides.right).toBeNull()
+  })
+
+  test('a rename still compares HEAD against the working tree', () => {
+    const sides = fileDiffSides(row({ path: 'b.ts', oldPath: 'a.ts', status: 'renamed' }))
+
+    expect(sides.left).toBe('HEAD')
+    expect(sides.right).toBe('worktree')
   })
 })
