@@ -26,6 +26,16 @@ describe('modalSizeFor — no saved size', () => {
     expect(modalSizeFor(studio, null).width).toBeLessThanOrEqual(1800)
   })
 
+  test('claims most of the screen, not just over half of it', () => {
+    // Arrange / Act
+    const size = modalSizeFor(laptop, null)
+
+    // Assert — a file opened in the floating window should read like an
+    // editor, not a dialog.
+    expect(size.width / laptop.width).toBeGreaterThanOrEqual(0.88)
+    expect(size.height / laptop.height).toBeGreaterThanOrEqual(0.88)
+  })
+
   test('stays usable on a small screen', () => {
     const size = modalSizeFor(small, null)
 
@@ -56,6 +66,17 @@ describe('modalSizeFor — saved size', () => {
     const size = modalSizeFor(studio, { width: 900, height: 600 })
 
     expect(size.width).toBeGreaterThan(900)
+  })
+
+  test('grows a saved size left over from a smaller window', () => {
+    // Arrange — 1090 wide is what a drag on a smaller window leaves behind.
+    const wide = { width: 1999, height: 1254 }
+
+    // Act
+    const size = modalSizeFor(wide, { width: 1090, height: 745 })
+
+    // Assert
+    expect(size.width).toBeGreaterThan(1500)
   })
 
   test('does not grow a saved size that is a deliberate, reasonable choice', () => {

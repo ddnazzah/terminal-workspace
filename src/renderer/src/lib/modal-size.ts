@@ -4,8 +4,8 @@ export interface Size {
 }
 
 /** Fraction of the viewport the modal takes when the user has not resized it. */
-const WIDTH_RATIO = 0.78
-const HEIGHT_RATIO = 0.82
+const WIDTH_RATIO = 0.92
+const HEIGHT_RATIO = 0.92
 
 /** Never smaller than this, or the editor stops being usable. */
 const MIN_WIDTH = 420
@@ -19,7 +19,7 @@ const MIN_HEIGHT = 300
 const MAX_AUTO_WIDTH = 1800
 
 /** Margin kept around the modal so it never meets the window edge. */
-const EDGE_MARGIN = 80
+const EDGE_MARGIN = 40
 
 /**
  * Size for the file modal, given the viewport and any previously saved size.

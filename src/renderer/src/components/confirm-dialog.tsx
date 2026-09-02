@@ -59,7 +59,7 @@ export function ConfirmDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center pt-32 px-4"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
       onClick={onCancel}
     >
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" aria-hidden />
